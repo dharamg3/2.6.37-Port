@@ -1,0 +1,39 @@
+Bravo leds
+----------
+
+microp_i2c_write_led_mode function in board-bravo-microp.c
+
+The leds are controlled with an i2c write of a 7 byte block of data.
+Here is an explanation of the block, based on the code and some experimentation, as it does not appear to be documented anywhere else.
+During my testing the blue led would not light at all so some info is probably incomplete (e.g. which leds can be combined in the bitmask).
+
+data[0] = led bitmask
+          0x01 = green
+          0x02 = amber
+          0x04 = blue
+          green and amber can be combined (0x03) to control both at once
+
+data[1] = led mode (green/blue led)
+          0x00 = off
+          0x01 = on
+          0x02=0x03=0x04 = flashing (short on, long off)
+          0x05 = flashing (medium on, medium off) - only valid for amber led
+
+data[2] = high 8 bits of off timer (green/blue led)
+data[3] = low 8 bits of off timer (green/blue led)
+          off timer can be used to turn off the leds automatically after a set amount of time, the units of this value are unclear but seem to be slightly longer than seconds
+          the drivers generally sets both values to 0xff for maximum time on when enabling the leds, but the framework/apps could set their own off timer
+
+data[4] = led mode (amber led) (see above for details)
+
+data[5] = high 8 bits of off timer (amber led) (see above for details)
+data[6] = low 8 bits of off timer (amber led) (see above for details)
+
+Unused values should be set to 0x00 (e.g. data[4,5,6] when only controlling green led).
+
+As the options for green and amber leds are separate in the data they can both supplied when specifying combined green and amber in the led bitmask.
+Amber always overrides green i.e. if you turn both on together you will see only amber.
+So why can you control them both at the same time? Two uses:
+1) Turning both leds on and specifying a shorter off timer for amber than green. Amber will show till the timer expires then the led will fall back to green.
+2) Turning on green (mode 0x01) and making amber flash (mode 0x02-0x05) gives an alternating green/amber flashing pattern.
+However, neither of these options requires a single combined write - two separate writes, one for each led, will produce the same result.
