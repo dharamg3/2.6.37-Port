@@ -1,13 +1,15 @@
 /* linux/arch/arm/mach-s5p6442/include/mach/entry-macro.S
  *
- * Copyright (c) 2010 Samsung Electronics Co., Ltd.
- *		http://www.samsung.com/
+ * Copyright 2008 Openmoko, Inc.
+ * Copyright 2008 Simtec Electronics
+ *	http://armlinux.simtec.co.uk/
+ *	Ben Dooks <ben@simtec.co.uk>
  *
- * Low-level IRQ helper macros for the Samsung S5P6442
+ * Low-level IRQ helper macros for the Samsung S5P64XX series
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
+ * This file is licensed under  the terms of the GNU General Public
+ * License version 2. This program is licensed "as is" without any
+ * warranty of any kind, whether express or implied.
 */
 
 #include <asm/hardware/vic.h>
@@ -18,7 +20,7 @@
 	.endm
 
 	.macro	get_irqnr_preamble, base, tmp
-	ldr	\base, =VA_VIC0
+	ldr	\base, =S3C_VA_VIC0
 	.endm
 
 	.macro	arch_ret_to_user, tmp1, tmp2
@@ -27,18 +29,18 @@
 	.macro	get_irqnr_and_base, irqnr, irqstat, base, tmp
 
 	@ check the vic0
-	mov	\irqnr, # S5P_IRQ_OFFSET + 31
+	mov	\irqnr, # S3C_IRQ_OFFSET + 31
 	ldr	\irqstat, [ \base, # VIC_IRQ_STATUS ]
 	teq	\irqstat, #0
 
 	@ otherwise try vic1
-	addeq	\tmp, \base, #(VA_VIC1 - VA_VIC0)
+	addeq	\tmp, \base, #(S3C_VA_VIC1 - S3C_VA_VIC0)
 	addeq	\irqnr, \irqnr, #32
 	ldreq	\irqstat, [ \tmp, # VIC_IRQ_STATUS ]
 	teqeq	\irqstat, #0
 
 	@ otherwise try vic2
-	addeq	\tmp, \base, #(VA_VIC2 - VA_VIC0)
+	addeq	\tmp, \base, #(S3C_VA_VIC2 - S3C_VA_VIC0)
 	addeq	\irqnr, \irqnr, #32
 	ldreq	\irqstat, [ \tmp, # VIC_IRQ_STATUS ]
 	teqeq	\irqstat, #0

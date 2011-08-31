@@ -1,13 +1,29 @@
-/* linux/arch/arm/plat-s5p/clock.c
+/* linux/arch/arm/plat-s3c24xx/clock.c
  *
- * Copyright 2009 Samsung Electronics Co., Ltd.
- *		http://www.samsung.com/
+ * Copyright (c) 2004-2005 Simtec Electronics
+ *	Ben Dooks <ben@simtec.co.uk>
  *
- * S5P - Common clock support
+ * S3C24XX Core clock control support
+ *
+ * Based on, and code from linux/arch/arm/mach-versatile/clock.c
+ **
+ **  Copyright (C) 2004 ARM Limited.
+ **  Written by Deep Blue Solutions Limited.
+ *
  *
  * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 */
 
 #include <linux/init.h>
@@ -16,178 +32,504 @@
 #include <linux/list.h>
 #include <linux/errno.h>
 #include <linux/err.h>
-#include <linux/clk.h>
+#include <linux/platform_device.h>
 #include <linux/sysdev.h>
+#include <linux/interrupt.h>
+#include <linux/ioport.h>
+#include <linux/clk.h>
+#include <linux/spinlock.h>
+#include <linux/delay.h>
 #include <linux/io.h>
-#include <asm/div64.h>
 
-#include <mach/regs-clock.h>
+#include <mach/hardware.h>
+#include <mach/map.h>
+#include <asm/irq.h>
 
+#include <plat/cpu-freq.h>
+#include <plat/regs-clock.h>
 #include <plat/clock.h>
-#include <plat/clock-clksrc.h>
-#include <plat/s5p-clock.h>
+#include <plat/cpu.h>
 
-/* fin_apll, fin_mpll and fin_epll are all the same clock, which we call
- * clk_ext_xtal_mux.
-*/
-struct clk clk_ext_xtal_mux = {
-	.name		= "ext_xtal",
+/* clock information */
+
+static LIST_HEAD(clocks);
+
+/* We originally used an mutex here, but some contexts (see resume)
+ * are calling functions such as clk_set_parent() with IRQs disabled
+ * causing an BUG to be triggered.
+ */
+DEFINE_SPINLOCK(clocks_lock);
+
+/* enable and disable calls for use with the clk struct */
+
+static int clk_null_enable(struct clk *clk, int enable)
+{
+	return 0;
+}
+
+/* Clock API calls */
+
+struct clk *clk_get(struct device *dev, const char *id)
+{
+	struct clk *p;
+	struct clk *clk = ERR_PTR(-ENOENT);
+	int idno;
+
+	if (dev == NULL || dev->bus != &platform_bus_type)
+		idno = -1;
+	else
+		idno = to_platform_device(dev)->id;
+
+	spin_lock(&clocks_lock);
+
+	list_for_each_entry(p, &clocks, list) {
+		if (p->id == idno &&
+		    strcmp(id, p->name) == 0 &&
+		    try_module_get(p->owner)) {
+			clk = p;
+			break;
+		}
+	}
+
+	/* check for the case where a device was supplied, but the
+	 * clock that was being searched for is not device specific */
+
+	if (IS_ERR(clk)) {
+		list_for_each_entry(p, &clocks, list) {
+			if (p->id == -1 && strcmp(id, p->name) == 0 &&
+			    try_module_get(p->owner)) {
+				clk = p;
+				break;
+			}
+		}
+	}
+
+	spin_unlock(&clocks_lock);
+	return clk;
+}
+
+void clk_put(struct clk *clk)
+{
+	module_put(clk->owner);
+}
+
+int clk_enable(struct clk *clk)
+{
+	if (IS_ERR(clk) || clk == NULL)
+		return -EINVAL;
+
+	clk_enable(clk->parent);
+
+	spin_lock(&clocks_lock);
+	if ((clk->usage++) == 0) {
+#if defined(CONFIG_CPU_S5PC100) || defined(CONFIG_CPU_S5PC110)
+		if (clk->pd != NULL) {
+			if (clk->pd->ref_count == 0)
+				(clk->pd->pd_set)(clk->pd, 1);
+			(clk->pd->ref_count++);
+		}
+#endif
+		(clk->enable)(clk, 1);
+	}
+
+	spin_unlock(&clocks_lock);
+	return 0;
+}
+
+void clk_disable(struct clk *clk)
+{
+	if (IS_ERR(clk) || clk == NULL)
+		return;
+
+	spin_lock(&clocks_lock);
+
+	if ((--clk->usage) == 0) {
+		(clk->enable)(clk, 0);
+#if defined(CONFIG_CPU_S5PC100) || defined(CONFIG_CPU_S5PC110)
+		if (clk->pd != NULL) {
+			if (clk->pd->ref_count == 1)
+				(clk->pd->pd_set)(clk->pd, 0);
+			if (clk->pd->ref_count > 0)
+				(clk->pd->ref_count--);
+		}
+#endif
+	}
+
+	spin_unlock(&clocks_lock);
+	clk_disable(clk->parent);
+}
+
+
+unsigned long clk_get_rate(struct clk *clk)
+{
+	if (IS_ERR(clk))
+		return 0;
+
+	if (clk->rate != 0)
+		return clk->rate;
+
+	if (clk->get_rate != NULL)
+		return (clk->get_rate)(clk);
+
+	if (clk->parent != NULL)
+		return clk_get_rate(clk->parent);
+
+	return clk->rate;
+}
+
+long clk_round_rate(struct clk *clk, unsigned long rate)
+{
+	if (!IS_ERR(clk) && clk->round_rate)
+		return (clk->round_rate)(clk, rate);
+
+	return rate;
+}
+
+int clk_set_rate(struct clk *clk, unsigned long rate)
+{
+	int ret;
+
+	if (IS_ERR(clk))
+		return -EINVAL;
+
+	/* We do not default just do a clk->rate = rate as
+	 * the clock may have been made this way by choice.
+	 */
+
+	WARN_ON(clk->set_rate == NULL);
+
+	if (clk->set_rate == NULL)
+		return -EINVAL;
+
+	spin_lock(&clocks_lock);
+	ret = (clk->set_rate)(clk, rate);
+	spin_unlock(&clocks_lock);
+
+	return ret;
+}
+
+struct clk *clk_get_parent(struct clk *clk)
+{
+	return clk->parent;
+}
+
+int clk_set_parent(struct clk *clk, struct clk *parent)
+{
+	int ret = 0;
+
+	if (IS_ERR(clk))
+		return -EINVAL;
+
+	spin_lock(&clocks_lock);
+
+	if (clk->set_parent)
+		ret = (clk->set_parent)(clk, parent);
+
+	spin_unlock(&clocks_lock);
+
+	return ret;
+}
+
+EXPORT_SYMBOL(clk_get);
+EXPORT_SYMBOL(clk_put);
+EXPORT_SYMBOL(clk_enable);
+EXPORT_SYMBOL(clk_disable);
+EXPORT_SYMBOL(clk_get_rate);
+EXPORT_SYMBOL(clk_round_rate);
+EXPORT_SYMBOL(clk_set_rate);
+EXPORT_SYMBOL(clk_get_parent);
+EXPORT_SYMBOL(clk_set_parent);
+
+/* base clocks */
+
+static int clk_default_setrate(struct clk *clk, unsigned long rate)
+{
+	clk->rate = rate;
+	return 0;
+}
+
+struct clk clk_xtal = {
+	.name		= "xtal",
+	.id		= -1,
+	.rate		= 0,
+	.parent		= NULL,
+	.ctrlbit	= 0,
+};
+
+struct clk clk_ext = {
+	.name		= "ext",
 	.id		= -1,
 };
 
-struct clk clk_xusbxti = {
-	.name		= "xusbxti",
+struct clk clk_epll = {
+	.name		= "epll",
 	.id		= -1,
 };
 
-struct clk s5p_clk_27m = {
-	.name		= "clk_27m",
+struct clk clk_mpll = {
+	.name		= "mpll",
 	.id		= -1,
-	.rate		= 27000000,
+	.set_rate	= clk_default_setrate,
 };
 
-/* 48MHz USB Phy clock output */
-struct clk clk_48m = {
-	.name		= "clk_48m",
+struct clk clk_upll = {
+	.name		= "upll",
 	.id		= -1,
-	.rate		= 48000000,
+	.parent		= NULL,
+	.ctrlbit	= 0,
 };
 
-/* APLL clock output
- * No need .ctrlbit, this is always on
-*/
-struct clk clk_fout_apll = {
-	.name		= "fout_apll",
+struct clk clk_f = {
+	.name		= "fclk",
 	.id		= -1,
+	.rate		= 0,
+	.parent		= &clk_mpll,
+	.ctrlbit	= 0,
+	.set_rate	= clk_default_setrate,
 };
 
-/* MPLL clock output
- * No need .ctrlbit, this is always on
-*/
-struct clk clk_fout_mpll = {
-	.name		= "fout_mpll",
+struct clk clk_h = {
+	.name		= "hclk",
 	.id		= -1,
+	.rate		= 0,
+	.parent		= NULL,
+	.ctrlbit	= 0,
+	.set_rate	= clk_default_setrate,
 };
 
-/* EPLL clock output */
-struct clk clk_fout_epll = {
-	.name		= "fout_epll",
+struct clk clk_p = {
+	.name		= "pclk",
 	.id		= -1,
-	.ctrlbit	= (1 << 31),
+	.rate		= 0,
+	.parent		= NULL,
+	.ctrlbit	= 0,
+	.set_rate	= clk_default_setrate,
 };
 
-/* DPLL clock output */
-struct clk clk_fout_dpll = {
-	.name		= "fout_dpll",
+struct clk clk_usb_bus = {
+	.name		= "usb-bus",
 	.id		= -1,
-	.ctrlbit	= (1 << 31),
+	.rate		= 0,
+	.parent		= &clk_upll,
 };
 
-/* VPLL clock output */
-struct clk clk_fout_vpll = {
-	.name		= "fout_vpll",
+#if defined(CONFIG_CPU_S5PC100) || defined(CONFIG_CPU_S5P6442)
+
+struct clk clk_hd0 = {
+	.name		= "hclkd0",
 	.id		= -1,
-	.ctrlbit	= (1 << 31),
+	.rate		= 0,
+	.parent		= NULL,
+	.ctrlbit	= 0,
+	.set_rate	= clk_default_setrate,
 };
 
-/* Possible clock sources for APLL Mux */
-static struct clk *clk_src_apll_list[] = {
-	[0] = &clk_fin_apll,
-	[1] = &clk_fout_apll,
+struct clk clk_pd0 = {
+	.name		= "pclkd0",
+	.id		= -1,
+	.rate		= 0,
+	.parent		= NULL,
+	.ctrlbit	= 0,
+	.set_rate	= clk_default_setrate,
+};
+#endif
+
+#if defined(CONFIG_CPU_S5P6442)
+
+struct clk clk_hd1 = {
+	.name		= "hclkd1",
+	.id		= -1,
+	.rate		= 0,
+	.parent		= NULL,
+	.ctrlbit	= 0,
+	.set_rate	= clk_default_setrate,
 };
 
-struct clksrc_sources clk_src_apll = {
-	.sources	= clk_src_apll_list,
-	.nr_sources	= ARRAY_SIZE(clk_src_apll_list),
+struct clk clk_pd1 = {
+	.name		= "pclkd1",
+	.id		= -1,
+	.rate		= 0,
+	.parent		= NULL,
+	.ctrlbit	= 0,
+	.set_rate	= clk_default_setrate,
 };
+#endif
 
-/* Possible clock sources for MPLL Mux */
-static struct clk *clk_src_mpll_list[] = {
-	[0] = &clk_fin_mpll,
-	[1] = &clk_fout_mpll,
-};
-
-struct clksrc_sources clk_src_mpll = {
-	.sources	= clk_src_mpll_list,
-	.nr_sources	= ARRAY_SIZE(clk_src_mpll_list),
-};
-
-/* Possible clock sources for EPLL Mux */
-static struct clk *clk_src_epll_list[] = {
-	[0] = &clk_fin_epll,
-	[1] = &clk_fout_epll,
-};
-
-struct clksrc_sources clk_src_epll = {
-	.sources	= clk_src_epll_list,
-	.nr_sources	= ARRAY_SIZE(clk_src_epll_list),
-};
-
-/* Possible clock sources for DPLL Mux */
-static struct clk *clk_src_dpll_list[] = {
-	[0] = &clk_fin_dpll,
-	[1] = &clk_fout_dpll,
-};
-
-struct clksrc_sources clk_src_dpll = {
-	.sources	= clk_src_dpll_list,
-	.nr_sources	= ARRAY_SIZE(clk_src_dpll_list),
-};
-
+#ifdef CONFIG_CPU_S5PC110
 struct clk clk_vpll = {
 	.name		= "vpll",
 	.id		= -1,
 };
 
-int s5p_gatectrl(void __iomem *reg, struct clk *clk, int enable)
-{
-	unsigned int ctrlbit = clk->ctrlbit;
-	u32 con;
-
-	con = __raw_readl(reg);
-	con = enable ? (con | ctrlbit) : (con & ~ctrlbit);
-	__raw_writel(con, reg);
-	return 0;
-}
-
-int s5p_epll_enable(struct clk *clk, int enable)
-{
-	unsigned int ctrlbit = clk->ctrlbit;
-	unsigned int epll_con = __raw_readl(S5P_EPLL_CON) & ~ctrlbit;
-
-	if (enable)
-		__raw_writel(epll_con | ctrlbit, S5P_EPLL_CON);
-	else
-		__raw_writel(epll_con, S5P_EPLL_CON);
-
-	return 0;
-}
-
-unsigned long s5p_epll_get_rate(struct clk *clk)
-{
-	return clk->rate;
-}
-
-static struct clk *s5p_clks[] __initdata = {
-	&clk_ext_xtal_mux,
-	&clk_48m,
-	&s5p_clk_27m,
-	&clk_fout_apll,
-	&clk_fout_mpll,
-	&clk_fout_epll,
-	&clk_fout_dpll,
-	&clk_fout_vpll,
-	&clk_vpll,
-	&clk_xusbxti,
+struct clk clk_h200 = {
+	.name		= "hclk200",
+	.id		= -1,
+	.rate		= 0,
+	.parent		= NULL,
+	.ctrlbit	= 0,
+	.set_rate	= clk_default_setrate,
 };
 
-void __init s5p_register_clocks(unsigned long xtal_freq)
+struct clk clk_h100 = {
+	.name		= "hclk100",
+	.id		= -1,
+	.rate		= 0,
+	.parent		= NULL,
+	.ctrlbit	= 0,
+	.set_rate	= clk_default_setrate,
+};
+
+struct clk clk_h166 = {
+	.name		= "hclk166",
+	.id		= -1,
+	.rate		= 0,
+	.parent		= NULL,
+	.ctrlbit	= 0,
+	.set_rate	= clk_default_setrate,
+};
+
+struct clk clk_h133 = {
+	.name		= "hclk133",
+	.id		= -1,
+	.rate		= 0,
+	.parent		= NULL,
+	.ctrlbit	= 0,
+	.set_rate	= clk_default_setrate,
+};
+
+
+struct clk clk_p100 = {
+	.name		= "pclk100",
+	.id		= -1,
+	.rate		= 0,
+	.parent		= NULL,
+	.ctrlbit	= 0,
+	.set_rate	= clk_default_setrate,
+};
+
+struct clk clk_p83 = {
+	.name		= "pclk83",
+	.id		= -1,
+	.rate		= 0,
+	.parent		= NULL,
+	.ctrlbit	= 0,
+	.set_rate	= clk_default_setrate,
+};
+
+struct clk clk_p66 = {
+	.name		= "pclk66",
+	.id		= -1,
+	.rate		= 0,
+	.parent		= NULL,
+	.ctrlbit	= 0,
+	.set_rate	= clk_default_setrate,
+};
+#endif
+
+
+struct clk s3c24xx_uclk = {
+	.name		= "uclk",
+	.id		= -1,
+};
+
+/* initialise the clock system */
+
+int s3c24xx_register_clock(struct clk *clk)
 {
-	int ret;
+	clk->owner = THIS_MODULE;
 
-	clk_ext_xtal_mux.rate = xtal_freq;
+	if (clk->enable == NULL)
+		clk->enable = clk_null_enable;
 
-	ret = s3c24xx_register_clocks(s5p_clks, ARRAY_SIZE(s5p_clks));
-	if (ret > 0)
-		printk(KERN_ERR "Failed to register s5p clocks\n");
+	/* add to the list of available clocks */
+
+	/* Quick check to see if this clock has already been registered. */
+	BUG_ON(clk->list.prev != clk->list.next);
+
+	spin_lock(&clocks_lock);
+	list_add(&clk->list, &clocks);
+	spin_unlock(&clocks_lock);
+
+	return 0;
 }
+
+int s3c24xx_register_clocks(struct clk **clks, int nr_clks)
+{
+	int fails = 0;
+
+	for (; nr_clks > 0; nr_clks--, clks++) {
+		if (s3c24xx_register_clock(*clks) < 0)
+			fails++;
+	}
+
+	return fails;
+}
+
+/* initalise all the clocks */
+
+int __init s3c24xx_register_baseclocks(unsigned long xtal)
+{
+	printk(KERN_INFO "S3C24XX Clocks, (c) 2004 Simtec Electronics\n");
+
+	clk_xtal.rate = xtal;
+
+	/* register our clocks */
+
+	if (s3c24xx_register_clock(&clk_xtal) < 0)
+		printk(KERN_ERR "failed to register master xtal\n");
+
+	if (s3c24xx_register_clock(&clk_mpll) < 0)
+		printk(KERN_ERR "failed to register mpll clock\n");
+
+	if (s3c24xx_register_clock(&clk_upll) < 0)
+		printk(KERN_ERR "failed to register upll clock\n");
+
+	if (s3c24xx_register_clock(&clk_f) < 0)
+		printk(KERN_ERR "failed to register cpu fclk\n");
+
+#if defined(CONFIG_CPU_S5PC100) || defined(CONFIG_CPU_S5P6442)
+	if (s3c24xx_register_clock(&clk_hd0) < 0)
+		printk(KERN_ERR "failed to register cpu hclkd0\n");
+
+	if (s3c24xx_register_clock(&clk_pd0) < 0)
+		printk(KERN_ERR "failed to register cpu pclkd0\n");
+#endif
+
+#if defined(CONFIG_CPU_S5P6442)
+	if (s3c24xx_register_clock(&clk_hd1) < 0)
+		printk(KERN_ERR "failed to register cpu hclkd1\n");
+
+	if (s3c24xx_register_clock(&clk_pd1) < 0)
+		printk(KERN_ERR "failed to register cpu pclkd1\n");
+#endif
+
+#ifdef CONFIG_CPU_S5PC110
+        if (s3c24xx_register_clock(&clk_h200) < 0)
+                printk(KERN_ERR "failed to register cpu hclk200\n");
+
+        if (s3c24xx_register_clock(&clk_h100) < 0)
+                printk(KERN_ERR "failed to register cpu hclk100\n");
+
+        if (s3c24xx_register_clock(&clk_h166) < 0)
+                printk(KERN_ERR "failed to register cpu hclk166\n");
+
+        if (s3c24xx_register_clock(&clk_h133) < 0)
+                printk(KERN_ERR "failed to register cpu hclk133\n");
+
+        if (s3c24xx_register_clock(&clk_p100) < 0)
+                printk(KERN_ERR "failed to register cpu pclk100\n");
+
+        if (s3c24xx_register_clock(&clk_p83) < 0)
+                printk(KERN_ERR "failed to register cpu pclk83\n");
+        if (s3c24xx_register_clock(&clk_p66) < 0)
+                printk(KERN_ERR "failed to register cpu pclk66\n");
+#endif
+	if (s3c24xx_register_clock(&clk_h) < 0)
+		printk(KERN_ERR "failed to register cpu hclk\n");
+
+	if (s3c24xx_register_clock(&clk_p) < 0)
+		printk(KERN_ERR "failed to register cpu pclk\n");
+
+	return 0;
+}
+

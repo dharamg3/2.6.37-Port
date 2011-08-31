@@ -234,11 +234,11 @@ int cpu_architecture(void)
 			cpu_arch += CPU_ARCH_ARMv3;
 	} else if ((read_cpuid_id() & 0x000f0000) == 0x000f0000) {
 #ifdef CONFIG_CPU_V6
- 	/* This patch is to detect CPU arch for ARM1176JZF-S.
- 	 * The ARM1176JZF-S has VMSAv7 memory model(same as cortex) 
- 	 * but it is not the ARMv7 architecture.
- 	 */
- 			return CPU_ARCH_ARMv6;
+	/* This patch is to detect CPU arch for ARM1176JZF-S.
+	 * The ARM1176JZF-S has VMSAv7 memory model(same as cortex) 
+	 * but it is not the ARMv7 architecture.
+	 */
+			return CPU_ARCH_ARMv6;
 #else
 		unsigned int mmfr0;
 

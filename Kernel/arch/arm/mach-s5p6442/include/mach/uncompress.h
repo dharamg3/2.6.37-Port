@@ -1,9 +1,11 @@
 /* linux/arch/arm/mach-s5p6442/include/mach/uncompress.h
  *
- * Copyright (c) 2010 Samsung Electronics Co., Ltd.
- *		http://www.samsung.com/
+ * Copyright 2008 Openmoko, Inc.
+ * Copyright 2008 Simtec Electronics
+ *	http://armlinux.simtec.co.uk/
+ *	Ben Dooks <ben@simtec.co.uk>
  *
- * S5P6442 - uncompress code
+ * S3C6400 - uncompress code
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as

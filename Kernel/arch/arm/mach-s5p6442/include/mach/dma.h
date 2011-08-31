@@ -1,26 +1,21 @@
-/*
- * Copyright (C) 2010 Samsung Electronics Co. Ltd.
- *	Jaswinder Singh <jassi.brar@samsung.com>
+/* linux/arch/arm/mach-s5p6442/include/mach/dma.h
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * Copyright 2008 Openmoko, Inc.
+ * Copyright 2008 Simtec Electronics
+ *      Ben Dooks <ben@simtec.co.uk>
+ *      http://armlinux.simtec.co.uk/
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+ * S5P6442 - DMA support
  */
 
-#ifndef __MACH_DMA_H
-#define __MACH_DMA_H
+#ifndef __ASM_ARCH_DMA_H
+#define __ASM_ARCH_DMA_H __FILE__
 
-/* This platform uses the common S3C DMA API driver for PL330 */
-#include <plat/s3c-dma-pl330.h>
+#include <mach/s3c-dma.h>
 
-#endif /* __MACH_DMA_H */
+#define S3C_DMA_CONTROLLERS        	(2)
+#define S3C_CHANNELS_PER_DMA       	(8)
+#define S3C_CANDIDATE_CHANNELS_PER_DMA  (32)
+#define S3C_DMA_CHANNELS		(S3C_DMA_CONTROLLERS*S3C_CHANNELS_PER_DMA)
+
+#endif /* __ASM_ARCH_IRQ_H */

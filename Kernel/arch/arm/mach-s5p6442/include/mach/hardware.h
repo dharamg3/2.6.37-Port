@@ -1,18 +1,20 @@
 /* linux/arch/arm/mach-s5p6442/include/mach/hardware.h
  *
- * Copyright (c) 2010 Samsung Electronics Co., Ltd.
- *		http://www.samsung.com/
- *
+ * Copyright 2008 Openmoko, Inc.
+ * Copyright 2008 Simtec Electronics
+ *      Ben Dooks <ben@simtec.co.uk>
+ *      http://armlinux.simtec.co.uk/
+ * Copyright 2010 Samsung Electronics Co. Ltd.
+ * 
  * S5P6442 - Hardware support
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
-*/
+ */
 
 #ifndef __ASM_ARCH_HARDWARE_H
-#define __ASM_ARCH_HARDWARE_H __FILE__
-
-/* currently nothing here, placeholder */
-
-#endif /* __ASM_ARCH_HARDWARE_H */
+#define __ASM_ARCH_HARDWARE_H __FILE_
+#ifdef CONFIG_MACH_UNIVERSAL_S5P6442
+#include <mach/libra.h>
+#endif
+#ifdef CONFIG_MACH_APOLLO
+#include <mach/apollo.h>
+#endif
+#endif /* __ASM_ARCH_IRQ_H */

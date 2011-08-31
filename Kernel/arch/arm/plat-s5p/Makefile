@@ -1,30 +1,40 @@
 # arch/arm/plat-s5p/Makefile
 #
-# Copyright (c) 2009 Samsung Electronics Co., Ltd.
-# 		http://www.samsung.com/
+# Copyright 2008 Simtec Electronics
 #
 # Licensed under GPLv2
 
 obj-y				:=
 obj-m				:=
-obj-n				:= dummy.o
+obj-n				:=
 obj-				:=
 
-# Core files
+# Core support for all Samsung SoCs
 
-obj-y				+= dev-pmu.o
-obj-y				+= dev-uart.o
-obj-y				+= cpu.o
+obj-y				+= init.o
+
+ifndef CONFIG_ARCH_S5PC1XX
+ifndef CONFIG_ARCH_S5PC11X
+ifndef CONFIG_ARCH_S5P64XX
+obj-y				+= time.o
+endif 
+endif
+endif
 obj-y				+= clock.o
-obj-y				+= irq.o
-obj-$(CONFIG_S5P_EXT_INT)	+= irq-eint.o
-obj-$(CONFIG_S5P_GPIO_INT)	+= irq-gpioint.o
-obj-$(CONFIG_PM)		+= pm.o
-obj-$(CONFIG_PM)		+= irq-pm.o
+obj-y				+= pwm-clock.o
+obj-y				+= gpio.o
+obj-y				+= gpio-config.o
+obj-$(CONFIG_S3C_DMA_PL080)	+= dma-pl080.o
+obj-$(CONFIG_S3C_DMA_PL330)	+= dma-pl330.o 
 
 # devices
 
-obj-$(CONFIG_S5P_DEV_FIMC0)	+= dev-fimc0.o
-obj-$(CONFIG_S5P_DEV_FIMC1)	+= dev-fimc1.o
-obj-$(CONFIG_S5P_DEV_FIMC2)	+= dev-fimc2.o
-obj-$(CONFIG_S5P_DEV_ONENAND)	+= dev-onenand.o
+obj-$(CONFIG_S3C_DEV_HSMMC)	+= dev-hsmmc.o
+obj-$(CONFIG_S3C_DEV_HSMMC1)	+= dev-hsmmc1.o
+obj-$(CONFIG_S3C_DEV_HSMMC2)	+= dev-hsmmc2.o
+obj-y				+= dev-i2c0.o
+obj-$(CONFIG_S3C_DEV_I2C1)	+= dev-i2c1.o
+obj-$(CONFIG_S3C_DEV_I2C2)	+= dev-i2c2.o
+obj-$(CONFIG_S3C_DEV_FB)	+= dev-fb.o
+obj-$(CONFIG_TOUCHSCREEN_S3C)	+= dev-ts.o
+obj-$(CONFIG_SND_S3C6410_SOC_I2S)	+= dev-i2s.o
