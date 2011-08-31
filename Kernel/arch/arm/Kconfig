@@ -947,13 +947,15 @@ source "arch/arm/mach-s3c2440/Kconfig"
 source "arch/arm/mach-s3c2443/Kconfig"
 endif
 
+if ARCH_S5P6442
+source "arch/arm/mach-s5p6442/Kconfig"
+endif
+
 if ARCH_S3C64XX
 source "arch/arm/mach-s3c64xx/Kconfig"
 endif
 
 source "arch/arm/mach-s5p64x0/Kconfig"
-
-source "arch/arm/mach-s5p6442/Kconfig"
 
 source "arch/arm/mach-s5pc100/Kconfig"
 
@@ -1196,6 +1198,19 @@ source "drivers/pci/Kconfig"
 
 source "drivers/pcmcia/Kconfig"
 
+endmenu
+
+menu "Samsung Kernel Debug Features"
+
+choice
+         prompt "Enable Samsung Kernel Debug Features"
+         default KERNEL_DEBUG_SEC
+ 
+config KERNEL_DEBUG_SEC
+         bool "KERNEL_DEBUG_SEC"
+ 
+endchoice
+ 
 endmenu
 
 menu "Kernel Features"
@@ -1876,6 +1891,8 @@ endmenu
 source "net/Kconfig"
 
 source "drivers/Kconfig"
+
+source "drivers/sensor/Kconfig"
 
 source "fs/Kconfig"
 
