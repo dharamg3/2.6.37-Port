@@ -47,6 +47,7 @@ static DEFINE_MUTEX(dpm_list_mtx);
 static pm_message_t pm_transition;
 
 static void dpm_drv_timeout(unsigned long data);
+static DEFINE_TIMER(dpm_drv_wd, dpm_drv_timeout, 0, 0);
 struct dpm_drv_wd_data {
 	struct device *dev;
 	struct task_struct *tsk;
@@ -635,6 +636,25 @@ static void dpm_drv_timeout(unsigned long data)
 }
 
 /**
+*	dpm_drv_wdset - Sets up driver suspend/resume watchdog timer.
+*	@dev: struct device which we're guarding.
+*
+*/
+static void dpm_drv_wdset(struct device *dev)
+{
+	dpm_drv_wd.data = (unsigned long) dev;
+	mod_timer(&dpm_drv_wd, jiffies + (HZ * 3));
+}
+/**
+  *	dpm_drv_wdclr - clears driver suspend/resume watchdog timer.
+  *	@dev: struct device which we're no longer guarding.
+  *
+  */
+ static void dpm_drv_wdclr(struct device *dev)
+ {
+ 	del_timer_sync(&dpm_drv_wd);
+ }
+/**
  * dpm_resume - Execute "resume" callbacks for non-sysdev devices.
  * @state: PM transition of the system being carried out.
  *
@@ -847,9 +867,9 @@ int dpm_suspend_noirq(pm_message_t state)
 
 		get_device(dev);
 		mutex_unlock(&dpm_list_mtx);
-
+		dpm_drv_wdset(dev);
 		error = device_suspend_noirq(dev, state);
-
+		dpm_drv_wdclr(dev);
 		mutex_lock(&dpm_list_mtx);
 		if (error) {
 			pm_dev_err(dev, state, " late", error);
