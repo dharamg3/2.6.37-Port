@@ -23,7 +23,7 @@
 /*
  * Controller registers
  */
-
+#define SUPPORT_CLK_GATING 1
 #define SDHCI_DMA_ADDRESS	0x00
 
 #define SDHCI_BLOCK_SIZE	0x04
@@ -199,7 +199,9 @@
 
 #define SDHCI_MAX_DIV_SPEC_200	256
 #define SDHCI_MAX_DIV_SPEC_300	2046
-
+#if SUPPORT_CLK_GATING
+	struct timer_list	busy_check_timer;
+#endif
 struct sdhci_ops {
 #ifdef CONFIG_MMC_SDHCI_IO_ACCESSORS
 	u32		(*read_l)(struct sdhci_host *host, int reg);
@@ -216,12 +218,15 @@ struct sdhci_ops {
 	unsigned int	(*get_max_clock)(struct sdhci_host *host);
 	unsigned int	(*get_min_clock)(struct sdhci_host *host);
 	unsigned int	(*get_timeout_clock)(struct sdhci_host *host);
+	void            (*set_ios)(struct sdhci_host *host,
+ 				   struct mmc_ios *ios);
 	int		(*platform_8bit_width)(struct sdhci_host *host,
 					       int width);
 	void (*platform_send_init_74_clocks)(struct sdhci_host *host,
 					     u8 power_mode);
 	unsigned int    (*get_ro)(struct sdhci_host *host);
 };
+
 
 #ifdef CONFIG_MMC_SDHCI_IO_ACCESSORS
 

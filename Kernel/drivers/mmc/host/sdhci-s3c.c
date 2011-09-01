@@ -27,7 +27,7 @@
 
 #include "sdhci.h"
 
-#define MAX_BUS_CLK	(4)
+#define MAX_BUS_CLK	(3)
 
 /**
  * struct sdhci_s3c - S3C SDHCI instance
@@ -79,7 +79,7 @@ static void sdhci_s3c_check_sclk(struct sdhci_host *host)
 
 		tmp &= ~S3C_SDHCI_CTRL2_SELBASECLK_MASK;
 		tmp |= ourhost->cur_clk << S3C_SDHCI_CTRL2_SELBASECLK_SHIFT;
-		writel(tmp, host->ioaddr + 0x80);
+		writel(tmp, host->ioaddr + S3C_SDHCI_CONTROL2);
 	}
 }
 
@@ -111,6 +111,43 @@ static unsigned int sdhci_s3c_get_max_clk(struct sdhci_host *host)
 	}
 
 	return max;
+}
+
+static void sdhci_s3c_set_ios(struct sdhci_host *host,
+			      struct mmc_ios *ios)
+{
+	struct sdhci_s3c *ourhost = to_s3c(host);
+	struct s3c_sdhci_platdata *pdata = ourhost->pdata;
+	int width;
+	u8 tmp;
+
+	sdhci_s3c_check_sclk(host);
+
+	if (ios->power_mode != MMC_POWER_OFF) {
+		switch (ios->bus_width) {
+		case MMC_BUS_WIDTH_8:
+			width = 8;
+			tmp = readb(host->ioaddr + SDHCI_HOST_CONTROL);
+			writeb(tmp | SDHCI_S3C_CTRL_8BITBUS,
+				host->ioaddr + SDHCI_HOST_CONTROL);
+		break;
+		case MMC_BUS_WIDTH_4:
+			width = 4;
+			break;
+		case MMC_BUS_WIDTH_1:
+			width = 1;
+			break;
+		default:
+			BUG();
+		}
+
+		if (pdata->cfg_gpio)
+			pdata->cfg_gpio(ourhost->pdev, width);
+	}
+
+	if (pdata->cfg_card)
+		pdata->cfg_card(ourhost->pdev, host->ioaddr,
+				ios, host->mmc->card);
 }
 
 /**
@@ -236,7 +273,23 @@ static struct sdhci_ops sdhci_s3c_ops = {
 	.get_max_clock		= sdhci_s3c_get_max_clk,
 	.set_clock		= sdhci_s3c_set_clock,
 	.get_min_clock		= sdhci_s3c_get_min_clock,
+	.set_ios		= sdhci_s3c_set_ios,
 };
+
+/*
+ * call this when you need sd stack to recognize insertion or removal of card
+ * that can't be told by SDHCI regs
+ */
+void sdhci_s3c_force_presence_change(struct platform_device *pdev)
+{
+       struct s3c_sdhci_platdata *pdata = pdev->dev.platform_data;
+
+       printk("%s : sdhci_s3c_force_presence_change called\n",__FUNCTION__);
+       mmc_detect_change(pdata->sdhci_host->mmc, msecs_to_jiffies(200));
+}
+EXPORT_SYMBOL_GPL(sdhci_s3c_force_presence_change);
+
+
 
 static void sdhci_s3c_notify_change(struct platform_device *dev, int state)
 {
@@ -303,7 +356,7 @@ static int __devinit sdhci_s3c_probe(struct platform_device *pdev)
 	struct sdhci_s3c *sc;
 	struct resource *res;
 	int ret, irq, ptr, clks;
-
+	int irq_cd;
 	if (!pdata) {
 		dev_err(dev, "no device data specified\n");
 		return -ENOENT;
@@ -314,7 +367,14 @@ static int __devinit sdhci_s3c_probe(struct platform_device *pdev)
 		dev_err(dev, "no irq specified\n");
 		return irq;
 	}
-
+	if(pdev->id == 2)
+	{
+		irq_cd = platform_get_irq(pdev, 1);
+		if (irq_cd < 0) {
+			dev_err(dev, "no irq specified\n");
+			return irq_cd;
+		}
+	}
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!res) {
 		dev_err(dev, "no memory specified\n");
@@ -326,6 +386,8 @@ static int __devinit sdhci_s3c_probe(struct platform_device *pdev)
 		dev_err(dev, "sdhci_alloc_host() failed\n");
 		return PTR_ERR(host);
 	}
+
+	pdata->sdhci_host = host;
 
 	sc = sdhci_priv(host);
 
@@ -392,14 +454,19 @@ static int __devinit sdhci_s3c_probe(struct platform_device *pdev)
 	if (pdata->cfg_gpio)
 		pdata->cfg_gpio(pdev, pdata->max_width);
 
+	sdhci_s3c_check_sclk(host);
 	host->hw_name = "samsung-hsmmc";
 	host->ops = &sdhci_s3c_ops;
 	host->quirks = 0;
 	host->irq = irq;
+	host->irq_cd = irq_cd;
+	host->hwport = pdev->id;
 
 	/* Setup quirks for the controller */
 	host->quirks |= SDHCI_QUIRK_NO_ENDATTR_IN_NOPDESC;
 	host->quirks |= SDHCI_QUIRK_NO_HISPD_BIT;
+	if(pdev->id == 1)
+		host->quirks |= SDHCI_QUIRK_BROKEN_CARD_PRESENT_BIT;
 
 #ifndef CONFIG_MMC_SDHCI_S3C_DMA
 
@@ -426,7 +493,10 @@ static int __devinit sdhci_s3c_probe(struct platform_device *pdev)
 
 	/* HSMMC on Samsung SoCs uses SDCLK as timeout clock */
 	host->quirks |= SDHCI_QUIRK_DATA_TIMEOUT_USES_SDCLK;
-
+	if (pdata->host_caps)
+		host->mmc->caps = pdata->host_caps;
+	else
+		host->mmc->caps = 0;
 	ret = sdhci_add_host(host);
 	if (ret) {
 		dev_err(dev, "sdhci_add_host() failed\n");
