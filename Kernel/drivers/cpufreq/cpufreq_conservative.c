@@ -29,9 +29,17 @@
  * It helps to keep variable names smaller, simpler
  */
 
-#define DEF_FREQUENCY_UP_THRESHOLD		(80)
-#define DEF_FREQUENCY_DOWN_THRESHOLD		(20)
-
+ #define DEF_FREQUENCY_UP_THRESHOLD		(70)
+ #define DEF_FREQUENCY_DOWN_THRESHOLD		(40)
+ #ifdef CONFIG_CPU_S5P6442
+ #define DEF_MAX_FREQ_TIME_HZ			(15*HZ)
+ #define DEF_SAMPLING_FREQ_STEP	20
+ extern int dvfs_change_quick;
+ static int dvfs_max_freq_cnt = 0;
+ extern unsigned int s5p6442_target_frq(unsigned int pred_freq, int flag);
+ #else
+ #define DEF_SAMPLING_FREQ_STEP 5
+ #endif /* CONFIG_CPU_S5P6442 */
 /*
  * The polling frequency of this governor depends on the capability of
  * the processor. Default polling frequency is 1000 times the transition
@@ -83,6 +91,7 @@ static DEFINE_MUTEX(dbs_mutex);
 
 static struct workqueue_struct	*kconservative_wq;
 
+int conservative_workqueue_init = 0;
 static struct dbs_tuners {
 	unsigned int sampling_rate;
 	unsigned int sampling_down_factor;
@@ -95,7 +104,11 @@ static struct dbs_tuners {
 	.down_threshold = DEF_FREQUENCY_DOWN_THRESHOLD,
 	.sampling_down_factor = DEF_SAMPLING_DOWN_FACTOR,
 	.ignore_nice = 0,
+ #ifdef CONFIG_CPU_S5P6442
+ 	.freq_step = DEF_SAMPLING_FREQ_STEP,
+ #else
 	.freq_step = 5,
+ #endif /* CONFIG_CPU_S5P6442 */
 };
 
 static inline cputime64_t get_cpu_idle_time_jiffy(unsigned int cpu,
@@ -429,8 +442,9 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 {
 	unsigned int load = 0;
 	unsigned int max_load = 0;
+#ifndef CONFIG_CPU_S5P6442
 	unsigned int freq_target;
-
+#endif /* CONFIG_CPU_S5P6442 */
 	struct cpufreq_policy *policy;
 	unsigned int j;
 
@@ -499,13 +513,25 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 		return;
 
 	/* Check for frequency increase */
-	if (max_load > dbs_tuners_ins.up_threshold) {
+#ifdef CONFIG_CPU_S5P6442
+ 	if ((max_load > dbs_tuners_ins.up_threshold)|| (dvfs_change_quick) || (dvfs_max_freq_cnt > 0)) {
+ 		if(dvfs_change_quick){
+ 			dvfs_change_quick = 0;
+ 			dvfs_max_freq_cnt = ((DEF_MAX_FREQ_TIME_HZ *  5.654)/HZ); 
+ 		}
+ 		dvfs_max_freq_cnt = (dvfs_max_freq_cnt > 0)?(dvfs_max_freq_cnt - 1):0;
+#else
+         if (load > dbs_tuners_ins.up_threshold) {
+#endif
 		this_dbs_info->down_skip = 0;
 
 		/* if we are already at full speed then break out early */
 		if (this_dbs_info->requested_freq == policy->max)
 			return;
 
+ #ifdef CONFIG_CPU_S5P6442
+ 		this_dbs_info->requested_freq = s5p6442_target_frq(this_dbs_info->requested_freq, 1);
+ #else
 		freq_target = (dbs_tuners_ins.freq_step * policy->max) / 100;
 
 		/* max freq cannot be less than 100. But who knows.... */
@@ -513,6 +539,7 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 			freq_target = 5;
 
 		this_dbs_info->requested_freq += freq_target;
+#endif /* CONFIG_CPU_S5P6442 */
 		if (this_dbs_info->requested_freq > policy->max)
 			this_dbs_info->requested_freq = policy->max;
 
@@ -527,9 +554,13 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 	 * policy. To be safe, we focus 10 points under the threshold.
 	 */
 	if (max_load < (dbs_tuners_ins.down_threshold - 10)) {
+ #ifdef CONFIG_CPU_S5P6442
+ 		this_dbs_info->requested_freq = s5p6442_target_frq(this_dbs_info->requested_freq, -1);
+ #else
 		freq_target = (dbs_tuners_ins.freq_step * policy->max) / 100;
 
 		this_dbs_info->requested_freq -= freq_target;
+ #endif /* CONFIG_CPU_S5P6442 */
 		if (this_dbs_info->requested_freq < policy->min)
 			this_dbs_info->requested_freq = policy->min;
 
@@ -563,17 +594,31 @@ static void do_dbs_timer(struct work_struct *work)
 	queue_delayed_work_on(cpu, kconservative_wq, &dbs_info->work, delay);
 	mutex_unlock(&dbs_info->timer_mutex);
 }
-
+static int dbs_timer_count = 0;
 static inline void dbs_timer_init(struct cpu_dbs_info_s *dbs_info)
 {
 	/* We want all CPUs to do sampling nearly on same jiffy */
 	int delay = usecs_to_jiffies(dbs_tuners_ins.sampling_rate);
 	delay -= jiffies % delay;
-
+	if(conservative_workqueue_init == 0){
+ 	        kconservative_wq = create_workqueue("kconservative");
+         	if (!kconservative_wq) {
+                 	printk(KERN_ERR "Creation of kconservative failed\n");
+ 	                return ;
+         	}
+ 	        conservative_workqueue_init = 1;
+         }
 	dbs_info->enable = 1;
 	INIT_DELAYED_WORK_DEFERRABLE(&dbs_info->work, do_dbs_timer);
+         if (dbs_timer_count == 0) {
+                 queue_delayed_work_on(dbs_info->cpu, kconservative_wq, &dbs_info->work,
+ 				100 * HZ);		
+ 		dbs_timer_count++;
+ 	}
+ 	else {
 	queue_delayed_work_on(dbs_info->cpu, kconservative_wq, &dbs_info->work,
 				delay);
+	}
 }
 
 static inline void dbs_timer_exit(struct cpu_dbs_info_s *dbs_info)
@@ -717,13 +762,14 @@ struct cpufreq_governor cpufreq_gov_conservative = {
 static int __init cpufreq_gov_dbs_init(void)
 {
 	int err;
-
+	if(conservative_workqueue_init == 0){
 	kconservative_wq = create_workqueue("kconservative");
 	if (!kconservative_wq) {
 		printk(KERN_ERR "Creation of kconservative failed\n");
 		return -EFAULT;
 	}
-
+	conservative_workqueue_init = 1;
+ 	}
 	err = cpufreq_register_governor(&cpufreq_gov_conservative);
 	if (err)
 		destroy_workqueue(kconservative_wq);
@@ -735,6 +781,7 @@ static void __exit cpufreq_gov_dbs_exit(void)
 {
 	cpufreq_unregister_governor(&cpufreq_gov_conservative);
 	destroy_workqueue(kconservative_wq);
+	conservative_workqueue_init = 0;
 }
 
 
