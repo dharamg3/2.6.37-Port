@@ -719,7 +719,7 @@ config HAVE_S3C_RTC
 
 config RTC_DRV_S3C
 	tristate "Samsung S3C series SoC RTC"
-	depends on ARCH_S3C2410 || ARCH_S3C64XX || HAVE_S3C_RTC
+	depends on ARCH_S3C2410 || ARCH_S3C64XX || HAVE_S3C_RTC || ARCH_S5P64XX
 	help
 	  RTC (Realtime Clock) driver for the clock inbuilt into the
 	  Samsung S3C24XX series of SoCs. This can provide periodic
@@ -732,6 +732,19 @@ config RTC_DRV_S3C
 
 	  This driver can also be build as a module. If so, the module
 	  will be called rtc-s3c.
+
+ config RTC_S3C_SYNC_SYSTEM_TIME
+ 	bool "Sync System time from S3C RTC"
+ 	depends on RTC_DRV_S3C
+ 	help
+ 	  Sometimes, the system time does not match up with RTC time. That
+ 	  makes some problem. This option enables the function which synchronizes
+ 	  system time from hardware RTC.
+ 
+ config RTC_DRV_MAX8998
+ 	tristate "RTC using MAX8998 PMIC"
+ 	depends on MACH_APOLLO
+ 
 
 config RTC_DRV_EP93XX
 	tristate "Cirrus Logic EP93XX"

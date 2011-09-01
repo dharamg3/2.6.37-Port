@@ -53,8 +53,23 @@ static int __init rtc_hctosys(void)
 			"hctosys: invalid date/time\n");
 		goto err_invalid;
 	}
+#if defined(CONFIG_MACH_APOLLO)
+			struct rtc_time tm_default = {0, 0, 0, 1, 0, 110, -1, -1, -1};
 
-	rtc_tm_to_time(&tm, &tv.tv_sec);
+			rtc_tm_to_time(&tm_default, &tv.tv_sec);
+			do_settimeofday(&tv);
+
+			dev_info(rtc->dev.parent,
+				"hctosys: invalid but system clock was forced to set as "
+				"%d-%02d-%02d %02d:%02d:%02d UTC (%u)\n",
+				tm_default.tm_year + 1900, tm_default.tm_mon + 1, tm_default.tm_mday,
+				tm_default.tm_hour, tm_default.tm_min, tm_default.tm_sec,
+				(unsigned int) tv.tv_sec);
+#else
+			dev_err(rtc->dev.parent,
+				"hctosys: invalid date/time\n");
+#endif
+/*	rtc_tm_to_time(&tm, &tv.tv_sec);
 
 	do_settimeofday(&tv);
 
@@ -64,7 +79,7 @@ static int __init rtc_hctosys(void)
 		tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
 		tm.tm_hour, tm.tm_min, tm.tm_sec,
 		(unsigned int) tv.tv_sec);
-
+*/
 err_invalid:
 err_read:
 	rtc_class_close(rtc);
