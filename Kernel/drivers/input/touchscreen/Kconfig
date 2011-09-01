@@ -151,6 +151,30 @@ config TOUCHSCREEN_CYTTSP_I2C
 	  To compile this driver as a module, choose M here: the
 	  module will be called cyttsp-i2c.
 
+ config TOUCHSCREEN_S3C
+         tristate "S3C touchscreen driver"
+         depends on S5P64XX_TS_R_TYPE
+         default y
+         help
+           Say Y here to enable the driver for the touchscreen on the
+           S3C SMDK board.
+ 
+           If unsure, say N.
+ 
+           To compile this driver as a module, choose M here: the
+           module will be called s3c_ts.
+ 
+ config TOUCHSCREEN_NEW
+         bool "new flip touch"
+         depends on TOUCHSCREEN_S3C
+         default y
+         help
+           Say Y here to enable the driver for the new version touchscreen on the
+           S3C SMDK board.
+ 
+           Say N here to enable the driver for the old version touchscreen on the
+           S3C SMDK board.
+ 
 config TOUCHSCREEN_DA9034
 	tristate "Touchscreen support for Dialog Semiconductor DA9034"
 	depends on PMIC_DA903X
@@ -693,6 +717,19 @@ config TOUCHSCREEN_TSC2007
 
 	  To compile this driver as a module, choose M here: the
 	  module will be called tsc2007.
+
+ config TOUCHSCREEN_QT602240
+ 	tristate "quantum touchscreen driver"
+ 	depends on S5P64XX_TS_C_TYPE 
+ 	default n
+ 	help
+ 	  Say Y here to enable the driver for the touchscreen on the
+ 	  S3C saturn board.
+ 	  
+ 	  If unsure, say N.
+  
+ 	  To compile this driver as a module, choose M here: the
+ 	  module will be called melfas_ts.
 
 config TOUCHSCREEN_W90X900
 	tristate "W90P910 touchscreen driver"

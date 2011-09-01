@@ -46,6 +46,8 @@ struct evdev_client {
 	struct fasync_struct *fasync;
 	struct evdev *evdev;
 	struct list_head node;
+	struct wake_lock wake_lock;
+ 	char name[28];
 	int bufsize;
 	struct input_event buffer[];
 };

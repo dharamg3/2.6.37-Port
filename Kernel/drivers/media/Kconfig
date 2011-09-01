@@ -143,4 +143,12 @@ config USB_DABUSB
 	  module will be called dabusb.
 endif # DAB
 
+if CPU_S5P6442
+source "drivers/media/s5p6442/mfc/Kconfig"
+source "drivers/media/s5p6442/fimc_drv/Kconfig"
+source "drivers/media/s5p6442/jpeg_v2/Kconfig"
+source "drivers/media/s5p6442/g3d_drv/Kconfig"
+source "drivers/media/s5p6442/g2d_drv/Kconfig"
+endif
+
 endif # MEDIA_SUPPORT
