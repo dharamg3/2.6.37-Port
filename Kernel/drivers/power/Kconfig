@@ -22,6 +22,19 @@ config PDA_POWER
 	  one or two external power supplies (AC/USB) connected to main and
 	  backup batteries, and optional builtin charger.
 
+ config BATTERY_S5P6442
+ 	tristate "Battery driver (S5P6442)"
+ 	depends on ARCH_S5P64XX
+ 	help
+ 	  Say Y to enable support for batteries with s5p6442 chip.
+ 
+ config BATTERY_S5P6442_FAKE
+ 	tristate "Fake battery driver (S5P6442)"
+ 	depends on BATTERY_S5P6442
+ 	help
+ 	  Say Y to enable support for fake batteries.
+ 
+
 config APM_POWER
 	tristate "APM emulation for class batteries"
 	depends on APM_EMULATION
@@ -159,6 +172,12 @@ config CHARGER_PCF50633
 	depends on MFD_PCF50633
 	help
 	 Say Y to include support for NXP PCF50633 Main Battery Charger.
+
+config CHARGER_MAX8998
+ 	tristate "MAX8998 Charger"
+ 	help
+ 	  Say Y to enable MAX8998 charger support for the battery.
+  
 
 config BATTERY_JZ4740
 	tristate "Ingenic JZ4740 battery"
