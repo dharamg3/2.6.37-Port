@@ -563,11 +563,11 @@ config HAVE_S3C2410_I2C
 	  respective Kconfig file.
 
 config I2C_S3C2410
-	tristate "S3C2410 I2C Driver"
-	depends on HAVE_S3C2410_I2C
+	tristate "Samsung SoC I2C Driver (S3C24XX and S3C64XX series and S5P64XX)"
+	depends on ARCH_S3C2410 || ARCH_S5P64XX
 	help
 	  Say Y here to include support for I2C controller in the
-	  Samsung SoCs.
+	  Samsung SoC devices such as the S3C2410, S5P6442.
 
 config I2C_S6000
 	tristate "S6000 I2C support"

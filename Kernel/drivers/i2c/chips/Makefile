@@ -11,6 +11,8 @@
 #
 
 obj-$(CONFIG_SENSORS_MT9T013)	+= mt9t013.o
+obj-$(CONFIG_SENSORS_PCA963X)	+= pca963x.o
+obj-$(CONFIG_PMIC_MAX8998)      += max8998.o
 
 ifeq ($(CONFIG_I2C_DEBUG_CHIP),y)
 EXTRA_CFLAGS += -DDEBUG
