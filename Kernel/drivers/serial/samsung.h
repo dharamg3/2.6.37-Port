@@ -21,9 +21,6 @@ struct s3c24xx_uart_info {
 	unsigned long		tx_fifoshift;
 	unsigned long		tx_fifofull;
 
-	/* uart port features */
-
-	unsigned int		has_divslot:1;
 
 	/* clock source control */
 
@@ -79,6 +76,8 @@ extern int s3c24xx_serial_initconsole(struct platform_driver *drv,
 
 extern int s3c24xx_serial_init(struct platform_driver *drv,
 			       struct s3c24xx_uart_info *info);
+
+extern void s3c_setup_uart_cfg_gpio(unsigned char port);
 
 #ifdef CONFIG_SERIAL_SAMSUNG_CONSOLE
 

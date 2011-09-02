@@ -53,6 +53,7 @@
 
 #include "samsung.h"
 
+#define HIGH_SPEED_UART
 /* UART name and device definitions */
 
 #define S3C24XX_SERIAL_NAME	"ttySAC"
@@ -66,7 +67,9 @@
 
 /* flag to ignore all characters comming in */
 #define RXSTAT_DUMMY_READ (0x10000000)
-
+const unsigned int nSlotTable[16] = {0x0000, 0x0080, 0x0808, 0x0888, 0x2222, 0x4924, 0x4a52, 0x54aa,
+                                                 0x5555, 0xd555, 0xd5d5, 0xddd5, 0xdddd, 0xdfdd, 0xdfdf, 0xffdf};
+ 
 static inline struct s3c24xx_uart_port *to_ourport(struct uart_port *port)
 {
 	return container_of(port, struct s3c24xx_uart_port, port);
@@ -388,6 +391,11 @@ static void s3c24xx_serial_shutdown(struct uart_port *port)
 		ourport->rx_claimed = 0;
 		rx_enabled(port) = 0;
 	}
+       if(ourport->tx_claimed && ourport->rx_claimed) {
+                printk("calling shutdown from startup \n");
+                s3c24xx_serial_shutdown(port);
+        }
+ 
 }
 
 
@@ -446,6 +454,13 @@ static void s3c24xx_serial_pm(struct uart_port *port, unsigned int level,
 
 	ourport->pm_level = level;
 
+ 	/* FIXME - Clock gates of sclk and pclk are not separated on s5p6442.
+ 	   So we only need to control ip3 gate when we want to disable the clock related to UART.
+ 	   It's not ourport->baudclk but ourport->clk which control ip3 gate.
+ 	   Because ourport->baudclk has clk_null_enable fuction if source clock is pclk.
+ 	   However getting ourport->clk failed on probe. For this reason, we cannot disable the clock.
+ 	   If it affects power consumption in sleep mode, the problem should be solved. */ 
+
 	switch (level) {
 	case 3:
 		if (!IS_ERR(ourport->baudclk) && ourport->baudclk != NULL)
@@ -489,6 +504,15 @@ static struct s3c24xx_uart_clksrc tmp_clksrc = {
 	.divisor	= 1,
 };
 
+#ifdef HIGH_SPEED_UART
+ static struct s3c24xx_uart_clksrc tmp_hs_clksrc = {
+ 	.name		= "sclk_uart",
+ 	.min_baud	= 0,
+ 	.max_baud	= 0,
+ 	.divisor	= 1,
+};
+#endif
+ 
 static inline int
 s3c24xx_serial_getsource(struct uart_port *port, struct s3c24xx_uart_clksrc *c)
 {
@@ -508,8 +532,8 @@ s3c24xx_serial_setsource(struct uart_port *port, struct s3c24xx_uart_clksrc *c)
 struct baud_calc {
 	struct s3c24xx_uart_clksrc	*clksrc;
 	unsigned int			 calc;
-	unsigned int			 divslot;
 	unsigned int			 quot;
+	unsigned int                     slot;
 	struct clk			*src;
 };
 
@@ -518,8 +542,9 @@ static int s3c24xx_serial_calcbaud(struct baud_calc *calc,
 				   struct s3c24xx_uart_clksrc *clksrc,
 				   unsigned int baud)
 {
-	struct s3c24xx_uart_port *ourport = to_ourport(port);
-	unsigned long rate;
+ 	unsigned long rate,nslot;
+ 	unsigned long tempdiv;
+ 	unsigned int serial_result_1,serial_result_2;
 
 	calc->src = clk_get(port->dev, clksrc->name);
 	if (calc->src == NULL || IS_ERR(calc->src))
@@ -530,46 +555,52 @@ static int s3c24xx_serial_calcbaud(struct baud_calc *calc,
 
 	calc->clksrc = clksrc;
 
-	if (ourport->info->has_divslot) {
-		unsigned long div = rate / baud;
-
-		/* The UDIVSLOT register on the newer UARTs allows us to
-		 * get a divisor adjustment of 1/16th on the baud clock.
-		 *
-		 * We don't keep the UDIVSLOT value (the 16ths we calculated
-		 * by not multiplying the baud by 16) as it is easy enough
-		 * to recalculate.
-		 */
-
-		calc->quot = div / 16;
-		calc->calc = rate / div;
-	} else {
-		calc->quot = (rate + (8 * baud)) / (16 * baud);
-		calc->calc = (rate / (calc->quot * 16));
+ 	tempdiv = (rate*10/(baud*16))-1000;
+ 	serial_result_1 = ((tempdiv%1000)*16)/1000;
+ 	serial_result_2 = (((tempdiv%1000)*16) - (serial_result_1*1000));
+ 
+ 	nslot = serial_result_1;
+ 
+ 	calc->quot = tempdiv/1000;
+ 	if (calc->quot == 0) {
+ 		printk(KERN_ERR "uart: UBRDIV is zero, baudrate isn't affected by UDIVSOLT\n");
+ 		return 0;
 	}
-
-	calc->quot--;
+	calc->calc = (rate / (calc->quot * 16));
+ 	calc->slot = nSlotTable[nslot];
 	return 1;
 }
 
 static unsigned int s3c24xx_serial_getclk(struct uart_port *port,
 					  struct s3c24xx_uart_clksrc **clksrc,
 					  struct clk **clk,
-					  unsigned int baud)
+					  unsigned int baud, unsigned int *slot)
 {
 	struct s3c2410_uartcfg *cfg = s3c24xx_port_to_cfg(port);
 	struct s3c24xx_uart_clksrc *clkp;
 	struct baud_calc res[MAX_CLKS];
 	struct baud_calc *resptr, *best, *sptr;
+	struct clk *uclk;
 	int i;
 
 	clkp = cfg->clocks;
 	best = NULL;
 
 	if (cfg->clocks_size < 2) {
+ #ifdef HIGH_SPEED_UART
+ 		if (cfg->clocks_size == 0) {
+ 			if (cfg->hwport == 0)	/* Bluetooth UART Port */
+ 			{
+ 				clkp = &tmp_hs_clksrc;			
+ 				printk("@@@@@@@@@@@@@@ BT HIGHSPEED CLOCK @@@@@@@@@@@@@@\n");
+ 			}
+ 			else
+ 				clkp = &tmp_clksrc;			
+ 		}
+#else
 		if (cfg->clocks_size == 0)
 			clkp = &tmp_clksrc;
-
+#endif
 		/* check to see if we're sourcing fclk, and if so we're
 		 * going to have to update the clock source
 		 */
@@ -620,38 +651,19 @@ static unsigned int s3c24xx_serial_getclk(struct uart_port *port,
 			}
 		}
 	}
-
+	if(best) {
 	/* store results to pass back */
 
 	*clksrc = best->clksrc;
 	*clk    = best->src;
+	*slot   = best->slot;
 
 	return best->quot;
-}
+	} else {
+	return -EINVAL;
+ 	}
 
-/* udivslot_table[]
- *
- * This table takes the fractional value of the baud divisor and gives
- * the recommended setting for the UDIVSLOT register.
- */
-static u16 udivslot_table[16] = {
-	[0] = 0x0000,
-	[1] = 0x0080,
-	[2] = 0x0808,
-	[3] = 0x0888,
-	[4] = 0x2222,
-	[5] = 0x4924,
-	[6] = 0x4A52,
-	[7] = 0x54AA,
-	[8] = 0x5555,
-	[9] = 0xD555,
-	[10] = 0xD5D5,
-	[11] = 0xDDD5,
-	[12] = 0xDDDD,
-	[13] = 0xDFDD,
-	[14] = 0xDFDF,
-	[15] = 0xFFDF,
-};
+}
 
 static void s3c24xx_serial_set_termios(struct uart_port *port,
 				       struct ktermios *termios,
@@ -665,24 +677,26 @@ static void s3c24xx_serial_set_termios(struct uart_port *port,
 	unsigned int baud, quot;
 	unsigned int ulcon;
 	unsigned int umcon;
-	unsigned int udivslot = 0;
+	unsigned int slot = 0;
 
 	/*
 	 * We don't support modem control lines.
 	 */
 	termios->c_cflag &= ~(HUPCL | CMSPAR);
 	termios->c_cflag |= CLOCAL;
+	if (port->line == 0)		/* BT UART port */
+		termios->c_cflag |= CRTSCTS;
 
 	/*
 	 * Ask the core to calculate the divisor for us.
 	 */
 
-	baud = uart_get_baud_rate(port, termios, old, 0, 115200*8);
+	baud = uart_get_baud_rate(port, termios, old, 0, 4000000);
 
 	if (baud == 38400 && (port->flags & UPF_SPD_MASK) == UPF_SPD_CUST)
 		quot = port->custom_divisor;
 	else
-		quot = s3c24xx_serial_getclk(port, &clksrc, &clk, baud);
+		quot = s3c24xx_serial_getclk(port, &clksrc, &clk, baud, &slot);
 
 	/* check to see if we need  to change clock source */
 
@@ -700,18 +714,6 @@ static void s3c24xx_serial_set_termios(struct uart_port *port,
 		ourport->clksrc = clksrc;
 		ourport->baudclk = clk;
 		ourport->baudclk_rate = clk ? clk_get_rate(clk) : 0;
-	}
-
-	if (ourport->info->has_divslot) {
-		unsigned int div = ourport->baudclk_rate / baud;
-
-		if (cfg->has_fracval) {
-			udivslot = (div & 15);
-			dbg("fracval = %04x\n", udivslot);
-		} else {
-			udivslot = udivslot_table[div & 15];
-			dbg("udivslot = %04x (div %d)\n", udivslot, div & 15);
-		}
 	}
 
 	switch (termios->c_cflag & CSIZE) {
@@ -753,15 +755,12 @@ static void s3c24xx_serial_set_termios(struct uart_port *port,
 
 	spin_lock_irqsave(&port->lock, flags);
 
-	dbg("setting ulcon to %08x, brddiv to %d, udivslot %08x\n",
-	    ulcon, quot, udivslot);
+	dbg("setting ulcon to %08x, brddiv to %d\n", ulcon, quot);
 
 	wr_regl(port, S3C2410_ULCON, ulcon);
 	wr_regl(port, S3C2410_UBRDIV, quot);
+	wr_regl(port, S3C_UDIVSLOT, slot);
 	wr_regl(port, S3C2410_UMCON, umcon);
-
-	if (ourport->info->has_divslot)
-		wr_regl(port, S3C2443_DIVSLOT, udivslot);
 
 	dbg("uart: ulcon = 0x%08x, ucon = 0x%08x, ufcon = 0x%08x\n",
 	    rd_regl(port, S3C2410_ULCON),
@@ -1116,6 +1115,11 @@ static int s3c24xx_serial_init_port(struct s3c24xx_uart_port *ourport,
 		ourport->tx_irq = ret;
 
 	ourport->clk	= clk_get(&platdev->dev, "uart");
+ 	if (IS_ERR(ourport->clk)) {
+ 		dev_err(&platdev->dev, "failed to find uart clock source\n");
+ 		return PTR_ERR(ourport->clk);
+ 	}
+ 	clk_enable(ourport->clk);
 
 	dbg("port: map=%08x, mem=%08x, irq=%d (%d,%d), clock=%ld\n",
 	    port->mapbase, port->membase, port->irq,
@@ -1123,6 +1127,7 @@ static int s3c24xx_serial_init_port(struct s3c24xx_uart_port *ourport,
 
 	/* reset the fifos (and setup the uart) */
 	s3c24xx_serial_resetport(port, cfg);
+	s3c_setup_uart_cfg_gpio(cfg->hwport);
 	return 0;
 }
 
@@ -1197,7 +1202,7 @@ EXPORT_SYMBOL_GPL(s3c24xx_serial_remove);
 /* UART power management code */
 
 #ifdef CONFIG_PM
-
+extern void bluetooth_enable_irq(int enable);
 static int s3c24xx_serial_suspend(struct platform_device *dev, pm_message_t state)
 {
 	struct uart_port *port = s3c24xx_dev_to_port(&dev->dev);
