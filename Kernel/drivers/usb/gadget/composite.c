@@ -25,6 +25,8 @@
 #include <linux/slab.h>
 #include <linux/device.h>
 #include <linux/utsname.h>
+#include <linux/err.h>
+#include <linux/types.h>
 
 #include <linux/usb/composite.h>
 
@@ -46,6 +48,19 @@ static int (*composite_gadget_bind)(struct usb_composite_dev *cdev);
  * published in the device descriptor, either numbers or strings or both.
  * String parameters are in UTF-8 (superset of ASCII's 7 bit characters).
  */
+
+extern int samsung_kies_mtp_mode_flag;
+
+struct os_string_descriptor_set {
+	char bLength;
+	char bDescType;
+	unsigned char qwsignature[14];
+	char bMS_VendorCode;
+	char bPad;
+} __attribute__ ((packed));	
+
+typedef struct os_string_descriptor_set os_string_descriptor_set;
+
 
 static ushort idVendor;
 module_param(idVendor, ushort, 0);
@@ -339,8 +354,21 @@ static int config_buf(struct usb_configuration *config,
 			descriptors = f->hs_descriptors;
 		else
 			descriptors = f->descriptors;
-		if (f->disabled || !descriptors || descriptors[0] == NULL)
+		//by ss1
+ 		if (!descriptors || descriptors[0] == NULL) {
+ 			//seek same interface index
+ 			for (; f != config->interface[interfaceCount];)
+ 				interfaceCount++;
+ 				
+ 			//decrease interface numbers if same interface index
+ 			for (; f == config->interface[interfaceCount];) {
+ 				interfaceCount++;
+ 				c->bNumInterfaces--;
 			continue;
+		}
+ 		for (; f != config->interface[interfaceCount];)
+ 			interfaceCount++;
+
 		status = usb_descriptor_fillbuf(next, len,
 			(const struct usb_descriptor_header **) descriptors);
 		if (status < 0)
@@ -416,6 +444,10 @@ static int config_desc(struct usb_composite_dev *cdev, unsigned w_value)
 		}
 		if (w_value == 0)
 			return config_buf(c, speed, cdev->req->buf, type);
+ 		//by ss1 to return configuration descriptor corresponinding config INDEX
+ 		if (c->bConfigurationValue == w_value) 
+ 			return config_buf(c, speed, cdev->req->buf, type);
+ 
 		w_value--;
 	}
 	return -EINVAL;
@@ -526,11 +558,11 @@ static int set_config(struct usb_composite_dev *cdev,
 		struct usb_descriptor_header **descriptors;
 
 		if (!f)
-			break;
+			continue;
 		if (f->disabled)
 			continue;
 
-		/*
+		/*/* We support strings in multiple languages ... string descriptor zero
 		 * Record which endpoints are used by the function. This is used
 		 * to dispatch control requests targeted at that endpoint to the
 		 * function's setup callback instead of the current
@@ -637,7 +669,7 @@ int usb_add_config(struct usb_composite_dev *cdev,
 
 			if (!f)
 				continue;
-			DBG(cdev, "  interface %d = %s/%p\n",
+			printk( "  interface %d = %s/%p\n",
 				i, f->name, f);
 		}
 	}
@@ -654,6 +686,66 @@ done:
 	return status;
 }
 
+ int usb_change_config(struct usb_composite_dev *cdev,
+ 		struct usb_configuration *config)
+ {
+ 	int				status = -EINVAL;
+ 	struct usb_configuration	*c;
+ 
+ 	DBG(cdev, "adding config #%u '%s'/%p\n",
+ 			config->bConfigurationValue,
+ 			config->label, config);
+ 
+ 	/* delete  */	
+ 	if (!list_empty(&cdev->configs)) 
+ 	{
+ 		c = list_first_entry(&cdev->configs, struct usb_configuration, list);
+ 		printk("[%s] list_del '%s'\n", __func__, c->label);
+ 		list_del(&c->list);
+ 	} 
+ 
+ 	config->cdev = cdev;
+ 	cdev->config = config;
+ 
+ 	list_add_tail(&config->list, &cdev->configs);
+ 
+ 	INIT_LIST_HEAD(&config->functions);
+ 	config->next_interface_id = 0;
+ 
+ 	status = config->bind(config);
+ 	if (status < 0) {
+ 		config->cdev = NULL;
+ 	} else {
+ 		unsigned	i;
+ 
+		DBG(cdev, "cfg %d/%p speeds:%s%s\n",
+ 			config->bConfigurationValue, config,
+ 			config->highspeed ? " high" : "",
+ 			config->fullspeed
+ 				? (gadget_is_dualspeed(cdev->gadget)
+ 					? " full"
+ 					: " full/low")
+ 				: "");
+ 
+ 		for (i = 0; i < MAX_CONFIG_INTERFACES; i++) {
+ 			struct usb_function	*f = config->interface[i];
+ 
+ 			if (!f)
+ 				continue;
+ 			printk( "  interface %d = %s/%p\n",
+ 				i, f->name, f);
+ 		}
+ 	}
+ 	
+ 
+ 	/* set_alt(), or next config->bind(), sets up
+ 	 * ep->driver_data as needed.
+ 	 */
+ //	usb_ep_autoconfig_reset(cdev->gadget);
+ 
+ 	return status;
+ }
+ 
 /*-------------------------------------------------------------------------*/
 
 /* We support strings in multiple languages ... string descriptor zero
@@ -739,13 +831,47 @@ static int get_string(struct usb_composite_dev *cdev,
 			}
 		}
 
-		for (len = 0; len <= 126 && s->wData[len]; len++)
+		for (len = 0; s->wData[len] && len <= 126; len++)
 			continue;
 		if (!len)
 			return -EINVAL;
 
 		s->bLength = 2 * (len + 1);
 		return s->bLength;
+} else if (id == 0xEE) {
+ 		if(samsung_kies_mtp_mode_flag == 1) {
+ 			/* OS String Descriptor Request is issue by the PC hence respond back */
+ 			os_string_descriptor_set output;
+ 			struct usb_string_descriptor *os_desc = buf;
+ 
+ 			memset(os_desc, 0x00, 256);
+ 			os_desc->bDescriptorType = USB_DT_STRING;
+ 
+ 			output.qwsignature[0] = 0x4D;
+ 			output.qwsignature[1] = 0x00;
+ 			output.qwsignature[2] = 0x53;
+ 			output.qwsignature[3] = 0x00;
+ 			output.qwsignature[4] = 0x46;
+ 			output.qwsignature[5] = 0x00;
+ 			output.qwsignature[6] = 0x54;
+ 			output.qwsignature[7] = 0x00;
+ 			output.qwsignature[8] = 0x31;
+ 			output.qwsignature[9] = 0x00;
+ 			output.qwsignature[10] = 0x30;
+ 			output.qwsignature[11] = 0x00;
+ 			output.qwsignature[12] = 0x30;
+ 			output.qwsignature[13] = 0x00;
+ 
+ 
+ 			output.bMS_VendorCode = 0x54;
+ 			output.bPad = 0x00;
+ 
+ 			memcpy(os_desc->wData, &output.qwsignature, sizeof(os_string_descriptor_set));
+ 
+ 			os_desc->bLength = 0x12; 
+ 
+ 			return os_desc->bLength;
+ 		}
 	}
 
 	/* Otherwise, look up and return a specified string.  First
@@ -908,6 +1034,12 @@ composite_setup(struct usb_gadget *gadget, const struct usb_ctrlrequest *ctrl)
 	u16				w_value = le16_to_cpu(ctrl->wValue);
 	u16				w_length = le16_to_cpu(ctrl->wLength);
 	struct usb_function		*f = NULL;
+ 	char arr[38] = { 0x00, 0x00, 0x00, 0x01, 0x04, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 
+ 					 0x00, 0x00, 0x00, 0x01, 0x4D, 0x54, 0x50, 0x00, 0x00, 0x00, 0x00, 0x00, 
+ 					 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+ 					 0x00, 0x00 };
+ 	struct usb_string_descriptor *os_func_desc = req->buf;
+  
 	u8				endp;
 	unsigned long			flags;
 
@@ -928,6 +1060,19 @@ composite_setup(struct usb_gadget *gadget, const struct usb_ctrlrequest *ctrl)
 	gadget->ep0->driver_data = cdev;
 
 	switch (ctrl->bRequest) {
+
+ 	/* Microsoft OS Descriptor */
+ 	case 0x54:
+ 		if(samsung_kies_mtp_mode_flag == 1) {
+ 			os_func_desc->bDescriptorType = 0x00;
+ 			memcpy(os_func_desc->wData, &arr, 40);
+ 			os_func_desc->bLength = value = 0x28;
+ 
+ 			if (value >= 0)
+ 				value = min(w_length, (u16) value);
+ 		}
+ 		break; 
+ 
 
 	/* we handle all standard USB descriptors */
 	case USB_REQ_GET_DESCRIPTOR:
@@ -1000,11 +1145,17 @@ composite_setup(struct usb_gadget *gadget, const struct usb_ctrlrequest *ctrl)
 	case USB_REQ_GET_CONFIGURATION:
 		if (ctrl->bRequestType != USB_DIR_IN)
 			goto unknown;
-		if (cdev->config)
+		if (cdev->config) {
 			*(u8 *)req->buf = cdev->config->bConfigurationValue;
-		else
+			value = min(w_length, (u16) 1);
+		} else {
 			*(u8 *)req->buf = 0;
-		value = min(w_length, (u16) 1);
+		/* 
+ 			 * Set value to 0 to send ZLP 
+ 			 * USB CV's USB_REQ_GET_CONFIGURATION test result in warning message without 0 value 
+ 			 */
+ 			value = 0;
+		}
 		break;
 
 	/* function drivers must handle get/set altsetting; if there's
@@ -1369,8 +1520,6 @@ composite_suspend(struct usb_gadget *gadget)
 				f->suspend(f);
 		}
 	}
-	if (composite->suspend)
-		composite->suspend(cdev);
 
 	cdev->suspended = 1;
 }
@@ -1381,7 +1530,7 @@ composite_resume(struct usb_gadget *gadget)
 	struct usb_composite_dev	*cdev = get_gadget_data(gadget);
 	struct usb_function		*f;
 
-	/* REVISIT:  should we have config level
+	/* REVISIT:  should we have config and device level
 	 * suspend/resume callbacks?
 	 */
 	DBG(cdev, "resume\n");

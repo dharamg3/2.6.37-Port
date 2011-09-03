@@ -267,7 +267,7 @@ module_param(use_eem, bool, 0);
 MODULE_PARM_DESC(use_eem, "use CDC EEM mode");
 
 /*
- * We _always_ have an ECM, CDC Subset, or EEM configuration.
+ * We _always_ have an ECM or CDC Subset configuration.
  */
 static int __init eth_do_config(struct usb_configuration *c)
 {

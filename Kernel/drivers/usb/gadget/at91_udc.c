@@ -496,7 +496,7 @@ static int at91_ep_enable(struct usb_ep *_ep,
 		return -ESHUTDOWN;
 	}
 
-	tmp = usb_endpoint_type(desc);
+	tmp = desc->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK;
 	switch (tmp) {
 	case USB_ENDPOINT_XFER_CONTROL:
 		DBG("only one control endpoint\n");
@@ -528,7 +528,7 @@ ok:
 	spin_lock_irqsave(&udc->lock, flags);
 
 	/* initialize endpoint to match this descriptor */
-	ep->is_in = usb_endpoint_dir_in(desc);
+	ep->is_in = (desc->bEndpointAddress & USB_DIR_IN) != 0;
 	ep->is_iso = (tmp == USB_ENDPOINT_XFER_ISOC);
 	ep->stopped = 0;
 	if (ep->is_in)
@@ -1649,7 +1649,7 @@ int usb_gadget_probe_driver(struct usb_gadget_driver *driver,
 
 	udc->driver = driver;
 	udc->gadget.dev.driver = &driver->driver;
-	dev_set_drvdata(&udc->gadget.dev, &driver->driver);
+	udc->gadget.dev.driver_data = &driver->driver;
 	udc->enabled = 1;
 	udc->selfpowered = 1;
 
@@ -1658,7 +1658,7 @@ int usb_gadget_probe_driver(struct usb_gadget_driver *driver,
 		DBG("bind() returned %d\n", retval);
 		udc->driver = NULL;
 		udc->gadget.dev.driver = NULL;
-		dev_set_drvdata(&udc->gadget.dev, NULL);
+		udc->gadget.dev.driver_data = NULL;
 		udc->enabled = 0;
 		udc->selfpowered = 0;
 		return retval;
@@ -1689,7 +1689,7 @@ int usb_gadget_unregister_driver (struct usb_gadget_driver *driver)
 
 	driver->unbind(&udc->gadget);
 	udc->gadget.dev.driver = NULL;
-	dev_set_drvdata(&udc->gadget.dev, NULL);
+	udc->gadget.dev.driver_data = NULL;
 	udc->driver = NULL;
 
 	DBG("unbound from %s\n", driver->driver.name);
@@ -1843,6 +1843,7 @@ static int __init at91udc_probe(struct platform_device *pdev)
 					IRQF_DISABLED, driver_name, udc)) {
 				DBG("request vbus irq %d failed\n",
 				    udc->board.vbus_pin);
+				free_irq(udc->udp_irq, udc);
 				retval = -EBUSY;
 				goto fail3;
 			}
