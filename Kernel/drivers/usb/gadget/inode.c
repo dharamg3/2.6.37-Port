@@ -30,7 +30,6 @@
 #include <linux/wait.h>
 #include <linux/compiler.h>
 #include <asm/uaccess.h>
-#include <linux/sched.h>
 #include <linux/slab.h>
 #include <linux/poll.h>
 
@@ -385,8 +384,9 @@ ep_read (struct file *fd, char __user *buf, size_t len, loff_t *ptr)
 		return value;
 
 	/* halt any endpoint by doing a "wrong direction" i/o call */
-	if (usb_endpoint_dir_in(&data->desc)) {
-		if (usb_endpoint_xfer_isoc(&data->desc))
+ 	if (data->desc.bEndpointAddress & USB_DIR_IN) {
+ 		if ((data->desc.bmAttributes & USB_ENDPOINT_XFERTYPE_MASK)
+ 				== USB_ENDPOINT_XFER_ISOC)
 			return -EINVAL;
 		DBG (data->dev, "%s halt\n", data->name);
 		spin_lock_irq (&data->dev->lock);
@@ -428,8 +428,9 @@ ep_write (struct file *fd, const char __user *buf, size_t len, loff_t *ptr)
 		return value;
 
 	/* halt any endpoint by doing a "wrong direction" i/o call */
-	if (!usb_endpoint_dir_in(&data->desc)) {
-		if (usb_endpoint_xfer_isoc(&data->desc))
+ 	if (!(data->desc.bEndpointAddress & USB_DIR_IN)) {
+ 		if ((data->desc.bmAttributes & USB_ENDPOINT_XFERTYPE_MASK)
+ 				== USB_ENDPOINT_XFER_ISOC)
 			return -EINVAL;
 		DBG (data->dev, "%s halt\n", data->name);
 		spin_lock_irq (&data->dev->lock);
@@ -691,7 +692,7 @@ ep_aio_read(struct kiocb *iocb, const struct iovec *iov,
 	struct ep_data		*epdata = iocb->ki_filp->private_data;
 	char			*buf;
 
-	if (unlikely(usb_endpoint_dir_in(&epdata->desc)))
+	if (unlikely(epdata->desc.bEndpointAddress & USB_DIR_IN))
 		return -EINVAL;
 
 	buf = kmalloc(iocb->ki_left, GFP_KERNEL);
@@ -711,7 +712,7 @@ ep_aio_write(struct kiocb *iocb, const struct iovec *iov,
 	size_t			len = 0;
 	int			i = 0;
 
-	if (unlikely(!usb_endpoint_dir_in(&epdata->desc)))
+	if (unlikely(!(epdata->desc.bEndpointAddress & USB_DIR_IN)))
 		return -EINVAL;
 
 	buf = kmalloc(iocb->ki_left, GFP_KERNEL);
@@ -1333,7 +1334,7 @@ static void make_qualifier (struct dev_data *dev)
 
 	qual.bLength = sizeof qual;
 	qual.bDescriptorType = USB_DT_DEVICE_QUALIFIER;
-	qual.bcdUSB = cpu_to_le16 (0x0200);
+	qual.bcdUSB = __constant_cpu_to_le16 (0x0200);
 
 	desc = dev->dev;
 	qual.bDeviceClass = desc->bDeviceClass;
@@ -1901,7 +1902,7 @@ dev_config (struct file *fd, const char __user *buf, size_t len, loff_t *ptr)
 			|| dev->dev->bNumConfigurations != 1)
 		goto fail;
 	dev->dev->bNumConfigurations = 1;
-	dev->dev->bcdUSB = cpu_to_le16 (0x0200);
+	dev->dev->bcdUSB = __constant_cpu_to_le16 (0x0200);
 
 	/* triggers gadgetfs_bind(); then we can enumerate. */
 	spin_unlock_irq (&dev->lock);
@@ -2029,7 +2030,7 @@ gadgetfs_create_file (struct super_block *sb, char const *name,
 	return inode;
 }
 
-static const struct super_operations gadget_fs_operations = {
+static struct super_operations gadget_fs_operations = {
 	.statfs =	simple_statfs,
 	.drop_inode =	generic_delete_inode,
 };

@@ -28,6 +28,7 @@
 #include <linux/ioport.h>
 #include <linux/sched.h>
 #include <linux/slab.h>
+#include <linux/smp_lock.h>
 #include <linux/errno.h>
 #include <linux/init.h>
 #include <linux/timer.h>
@@ -1711,7 +1712,8 @@ int usb_gadget_unregister_driver(struct usb_gadget_driver *driver)
 	if (driver->disconnect)
 		driver->disconnect(&udc->gadget);
 
-	driver->unbind(&udc->gadget);
+	if (driver->disconnect)
+		driver->disconnect(&udc->gadget);
 
 	device_del(&udc->gadget.dev);
 	udc->driver = NULL;

@@ -37,9 +37,8 @@
  * one (!) network link through the USB gadget stack, normally "usb0".
  *
  * The control and data models are handled by the function driver which
- * connects to this code; such as CDC Ethernet (ECM or EEM),
- * "CDC Subset", or RNDIS.  That includes all descriptor and endpoint
- * management.
+ * connects to this code; such as CDC Ethernet, "CDC Subset", or RNDIS.
+ * That includes all descriptor and endpoint management.
  *
  * Link level addressing is handled by this component using module
  * parameters; if no such parameters are provided, random link level
@@ -95,7 +94,8 @@ struct eth_dev {
 
 #ifdef CONFIG_USB_GADGET_DUALSPEED
 
-static unsigned qmult = 5;
+//static unsigned qmult = 5;
+static unsigned qmult = 1;
 module_param(qmult, uint, S_IRUGO|S_IWUSR);
 MODULE_PARM_DESC(qmult, "queue length multiplier at high speed");
 
@@ -123,6 +123,7 @@ static inline int qlen(struct usb_gadget *gadget)
 #undef ERROR
 #undef INFO
 
+#if 0
 #define xprintk(d, level, fmt, args...) \
 	printk(level "%s: " fmt , (d)->net->name , ## args)
 
@@ -146,7 +147,23 @@ static inline int qlen(struct usb_gadget *gadget)
 	xprintk(dev , KERN_ERR , fmt , ## args)
 #define INFO(dev, fmt, args...) \
 	xprintk(dev , KERN_INFO , fmt , ## args)
+#else
 
+#define xprintk(d, level, fmt, args...) \
+	printk(fmt, ##args)
+
+#define DBG(dev, fmt, args...) \
+	printk(fmt, ##args)
+
+#define VDBG(dev, fmt, args...) \
+	printk(fmt, ##args)
+
+#define ERROR(dev, fmt, args...) \
+	printk(fmt, ##args)
+#define INFO(dev, fmt, args...) \
+	printk(fmt, ##args)
+
+#endif
 /*-------------------------------------------------------------------------*/
 
 /* NETWORK DRIVER HOOKUP (to the layer above this driver) */
@@ -240,7 +257,8 @@ rx_submit(struct eth_dev *dev, struct usb_request *req, gfp_t gfp_flags)
 	size += out->maxpacket - 1;
 	size -= size % out->maxpacket;
 
-	skb = alloc_skb(size + NET_IP_ALIGN, gfp_flags);
+	skb = alloc_skb(size + NET_IP_ALIGN + 6, gfp_flags);
+//	skb = alloc_skb(size + NET_IP_ALIGN, gfp_flags);
 	if (skb == NULL) {
 		DBG(dev, "no rx skb\n");
 		goto enomem;
@@ -250,7 +268,8 @@ rx_submit(struct eth_dev *dev, struct usb_request *req, gfp_t gfp_flags)
 	 * but on at least one, checksumming fails otherwise.  Note:
 	 * RNDIS headers involve variable numbers of LE32 values.
 	 */
-	skb_reserve(skb, NET_IP_ALIGN);
+	skb_reserve(skb, NET_IP_ALIGN + 6);
+//	skb_reserve(skb, NET_IP_ALIGN);
 
 	req->buf = skb->data;
 	req->length = size;
@@ -480,7 +499,10 @@ static void tx_complete(struct usb_ep *ep, struct usb_request *req)
 	list_add(&req->list, &dev->tx_reqs);
 	spin_unlock(&dev->req_lock);
 	dev_kfree_skb_any(skb);
-
+#ifdef CONFIG_USB_GADGET_S3C_OTGD_HS_DMA_MODE
+	if(req->buf != skb->data)
+		kfree(req->buf);
+#endif
 	atomic_dec(&dev->tx_qlen);
 	if (netif_carrier_ok(dev->net))
 		netif_wake_queue(dev->net);
@@ -574,7 +596,20 @@ static netdev_tx_t eth_start_xmit(struct sk_buff *skb,
 
 		length = skb->len;
 	}
+#ifdef CONFIG_USB_GADGET_S3C_OTGD_HS_DMA_MODE
+	/* To fulfill double word alignment requirement*/
+	req->buf = kmalloc(skb->len, GFP_ATOMIC | GFP_DMA);
+	if(!req->buf) {
+		req->buf = skb->data;
+		printk("%s:: failed to kmalloc\n",__func__);
+	}
+	else {
+		memcpy((void *) req->buf,(void *) skb->data,skb->len);
+	}
+	
+#else
 	req->buf = skb->data;
+#endif
 	req->context = skb;
 	req->complete = tx_complete;
 
@@ -608,6 +643,10 @@ static netdev_tx_t eth_start_xmit(struct sk_buff *skb,
 		dev_kfree_skb_any(skb);
 drop:
 		dev->net->stats.tx_dropped++;
+#ifdef CONFIG_USB_GADGET_S3C_OTGD_HS_DMA_MODE
+		if(req->buf != skb->data)
+			kfree(req->buf);
+#endif
 		spin_lock_irqsave(&dev->req_lock, flags);
 		if (list_empty(&dev->tx_reqs))
 			netif_start_queue(net);

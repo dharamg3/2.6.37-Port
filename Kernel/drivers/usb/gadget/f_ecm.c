@@ -131,7 +131,7 @@ static struct usb_cdc_header_desc ecm_header_desc = {
 	.bDescriptorType =	USB_DT_CS_INTERFACE,
 	.bDescriptorSubType =	USB_CDC_HEADER_TYPE,
 
-	.bcdCDC =		cpu_to_le16(0x0110),
+	.bcdCDC =		__constant_cpu_to_le16(0x0110),
 };
 
 static struct usb_cdc_union_desc ecm_union_desc = {
@@ -149,9 +149,9 @@ static struct usb_cdc_ether_desc ecm_desc = {
 
 	/* this descriptor actually adds value, surprise! */
 	/* .iMACAddress = DYNAMIC */
-	.bmEthernetStatistics =	cpu_to_le32(0), /* no statistics */
-	.wMaxSegmentSize =	cpu_to_le16(ETH_FRAME_LEN),
-	.wNumberMCFilters =	cpu_to_le16(0),
+ 	.bmEthernetStatistics =	__constant_cpu_to_le32(0), /* no statistics */
+ 	.wMaxSegmentSize =	__constant_cpu_to_le16(ETH_FRAME_LEN),
+ 	.wNumberMCFilters =	__constant_cpu_to_le16(0),
 	.bNumberPowerFilters =	0,
 };
 
@@ -193,7 +193,7 @@ static struct usb_endpoint_descriptor fs_ecm_notify_desc = {
 
 	.bEndpointAddress =	USB_DIR_IN,
 	.bmAttributes =		USB_ENDPOINT_XFER_INT,
-	.wMaxPacketSize =	cpu_to_le16(ECM_STATUS_BYTECOUNT),
+	.wMaxPacketSize =	__constant_cpu_to_le16(ECM_STATUS_BYTECOUNT),
 	.bInterval =		1 << LOG2_STATUS_INTERVAL_MSEC,
 };
 
@@ -237,7 +237,7 @@ static struct usb_endpoint_descriptor hs_ecm_notify_desc = {
 
 	.bEndpointAddress =	USB_DIR_IN,
 	.bmAttributes =		USB_ENDPOINT_XFER_INT,
-	.wMaxPacketSize =	cpu_to_le16(ECM_STATUS_BYTECOUNT),
+	.wMaxPacketSize =	__constant_cpu_to_le16(ECM_STATUS_BYTECOUNT),
 	.bInterval =		LOG2_STATUS_INTERVAL_MSEC + 4,
 };
 static struct usb_endpoint_descriptor hs_ecm_in_desc = {
@@ -246,7 +246,7 @@ static struct usb_endpoint_descriptor hs_ecm_in_desc = {
 
 	.bEndpointAddress =	USB_DIR_IN,
 	.bmAttributes =		USB_ENDPOINT_XFER_BULK,
-	.wMaxPacketSize =	cpu_to_le16(512),
+	.wMaxPacketSize =	__constant_cpu_to_le16(512),
 };
 
 static struct usb_endpoint_descriptor hs_ecm_out_desc = {
@@ -255,7 +255,7 @@ static struct usb_endpoint_descriptor hs_ecm_out_desc = {
 
 	.bEndpointAddress =	USB_DIR_OUT,
 	.bmAttributes =		USB_ENDPOINT_XFER_BULK,
-	.wMaxPacketSize =	cpu_to_le16(512),
+	.wMaxPacketSize =	__constant_cpu_to_le16(512),
 };
 
 static struct usb_descriptor_header *ecm_hs_function[] = {
@@ -273,7 +273,12 @@ static struct usb_descriptor_header *ecm_hs_function[] = {
 	(struct usb_descriptor_header *) &hs_ecm_out_desc,
 	NULL,
 };
-
+ /* used when ecm function is disabled */
+ static struct usb_descriptor_header *null_ecm_descs[] = {
+ 	NULL,
+ };
+ 
+ 
 /* string descriptors: */
 
 static struct usb_string ecm_string_defs[] = {
@@ -751,6 +756,8 @@ ecm_unbind(struct usb_configuration *c, struct usb_function *f)
 	kfree(ecm);
 }
 
+static 	struct f_ecm	*the_ecm;
+
 /**
  * ecm_bind_config - add CDC Ethernet network link to a configuration
  * @c: the configuration to support the network link
@@ -821,6 +828,8 @@ ecm_bind_config(struct usb_configuration *c, u8 ethaddr[ETH_ALEN])
 	ecm->port.func.setup = ecm_setup;
 	ecm->port.func.disable = ecm_disable;
 
+	the_ecm = ecm;
+
 	status = usb_add_function(c, &ecm->port.func);
 	if (status) {
 		ecm_string_defs[1].s = NULL;
@@ -828,3 +837,24 @@ ecm_bind_config(struct usb_configuration *c, u8 ethaddr[ETH_ALEN])
 	}
 	return status;
 }
+ 
+ void ecm_function_enable(int enable)
+ {
+ 	struct f_ecm	*ecm = the_ecm;
+ 
+ 	if (ecm) {
+ 		printk("[%s] ecm_function_enable => (%s)\n", __func__, 
+ 			enable ? "enabled" : "disabled");
+ 
+ 		if (enable) {
+ 			ecm->port.func.descriptors = ecm_fs_function;
+ 			ecm->port.func.hs_descriptors = ecm_hs_function;
+ 		} else {
+ 			ecm->port.func.descriptors = null_ecm_descs;
+ 			ecm->port.func.hs_descriptors = null_ecm_descs;
+ 		}
+	}
+ 	else
+ 		printk("[%s] dev does not exist\n", __func__);
+ }
+ 

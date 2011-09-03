@@ -109,7 +109,7 @@ static struct usb_cdc_header_desc mdlm_header_desc __initdata = {
 	.bDescriptorType =	USB_DT_CS_INTERFACE,
 	.bDescriptorSubType =	USB_CDC_HEADER_TYPE,
 
-	.bcdCDC =		cpu_to_le16(0x0110),
+	.bcdCDC =		__constant_cpu_to_le16(0x0110),
 };
 
 static struct usb_cdc_mdlm_desc mdlm_desc __initdata = {
@@ -117,7 +117,7 @@ static struct usb_cdc_mdlm_desc mdlm_desc __initdata = {
 	.bDescriptorType =	USB_DT_CS_INTERFACE,
 	.bDescriptorSubType =	USB_CDC_MDLM_TYPE,
 
-	.bcdVersion =		cpu_to_le16(0x0100),
+	.bcdVersion =		__constant_cpu_to_le16(0x0100),
 	.bGUID = {
 		0x5d, 0x34, 0xcf, 0x66, 0x11, 0x18, 0x11, 0xd6,
 		0xa2, 0x1a, 0x00, 0x01, 0x02, 0xca, 0x9a, 0x7f,
@@ -145,9 +145,9 @@ static struct usb_cdc_ether_desc ether_desc __initdata = {
 
 	/* this descriptor actually adds value, surprise! */
 	/* .iMACAddress = DYNAMIC */
-	.bmEthernetStatistics =	cpu_to_le32(0), /* no statistics */
-	.wMaxSegmentSize =	cpu_to_le16(ETH_FRAME_LEN),
-	.wNumberMCFilters =	cpu_to_le16(0),
+ 	.bmEthernetStatistics =	__constant_cpu_to_le32(0), /* no statistics */
+ 	.wMaxSegmentSize =	__constant_cpu_to_le16(ETH_FRAME_LEN),
+ 	.wNumberMCFilters =	__constant_cpu_to_le16(0),
 	.bNumberPowerFilters =	0,
 };
 
@@ -187,7 +187,7 @@ static struct usb_endpoint_descriptor hs_subset_in_desc __initdata = {
 	.bDescriptorType =	USB_DT_ENDPOINT,
 
 	.bmAttributes =		USB_ENDPOINT_XFER_BULK,
-	.wMaxPacketSize =	cpu_to_le16(512),
+	.wMaxPacketSize =	__constant_cpu_to_le16(512),
 };
 
 static struct usb_endpoint_descriptor hs_subset_out_desc __initdata = {
@@ -195,7 +195,7 @@ static struct usb_endpoint_descriptor hs_subset_out_desc __initdata = {
 	.bDescriptorType =	USB_DT_ENDPOINT,
 
 	.bmAttributes =		USB_ENDPOINT_XFER_BULK,
-	.wMaxPacketSize =	cpu_to_le16(512),
+	.wMaxPacketSize =	__constant_cpu_to_le16(512),
 };
 
 static struct usb_descriptor_header *hs_eth_function[] __initdata = {
@@ -208,6 +208,12 @@ static struct usb_descriptor_header *hs_eth_function[] __initdata = {
 	(struct usb_descriptor_header *) &hs_subset_out_desc,
 	NULL,
 };
+
+ /* used when geth function is disabled */
+ static struct usb_descriptor_header *null_geth_descs[] = {
+ 	NULL,
+ };
+ 
 
 /* string descriptors: */
 
@@ -354,6 +360,8 @@ geth_unbind(struct usb_configuration *c, struct usb_function *f)
 	kfree(func_to_geth(f));
 }
 
+static struct f_gether *the_geth;
+
 /**
  * geth_bind_config - add CDC Subset network link to a configuration
  * @c: the configuration to support the network link
@@ -413,6 +421,8 @@ int __init geth_bind_config(struct usb_configuration *c, u8 ethaddr[ETH_ALEN])
 	geth->port.func.set_alt = geth_set_alt;
 	geth->port.func.disable = geth_disable;
 
+	the_geth = geth;
+
 	status = usb_add_function(c, &geth->port.func);
 	if (status) {
 		geth_string_defs[1].s = NULL;
@@ -420,3 +430,23 @@ int __init geth_bind_config(struct usb_configuration *c, u8 ethaddr[ETH_ALEN])
 	}
 	return status;
 }
+
+ void geth_function_enable(int enable)
+ {
+ 	struct f_gether	*geth = the_geth;
+ 
+ 	if (geth) {
+ 		printk("[%s] geth_function_enable => (%s)\n", __func__, 
+ 			enable ? "enabled" : "disabled");
+ 
+ 		if (enable) {
+ 			geth->port.func.descriptors = fs_eth_function;
+ 			geth->port.func.hs_descriptors = hs_eth_function;
+ 		} else {
+ 			geth->port.func.descriptors = null_geth_descs;
+ 			geth->port.func.hs_descriptors = null_geth_descs;
+ 		}
+ 	}
+ 	else
+ 		printk("[%s] dev does not exist\n", __func__);
+ } 

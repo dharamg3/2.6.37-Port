@@ -28,7 +28,6 @@
 #include <linux/dma-mapping.h>
 #include <linux/clk.h>
 #include <linux/delay.h>
-#include <linux/timer.h>
 #include <linux/slab.h>
 
 #include <linux/usb/ch9.h>
@@ -53,8 +52,7 @@ void ep0_chg_stat(const char *label, struct imx_udc_struct *imx_usb,
 void imx_udc_enable(struct imx_udc_struct *imx_usb)
 {
 	int temp = __raw_readl(imx_usb->base + USB_CTRL);
-	__raw_writel(temp | CTRL_FE_ENA | CTRL_AFE_ENA,
-						imx_usb->base + USB_CTRL);
+	__raw_writel(temp | CTRL_FE_ENA | CTRL_AFE_ENA, imx_usb->base + USB_CTRL);
 	imx_usb->gadget.speed = USB_SPEED_FULL;
 }
 
@@ -187,8 +185,7 @@ void imx_udc_init_ep(struct imx_udc_struct *imx_usb)
 		temp = (EP_DIR(imx_ep) << 7) | (max << 5)
 			| (imx_ep->bmAttributes << 3);
 		__raw_writel(temp, imx_usb->base + USB_EP_STAT(i));
-		__raw_writel(temp | EPSTAT_FLUSH,
-						imx_usb->base + USB_EP_STAT(i));
+		__raw_writel(temp | EPSTAT_FLUSH, imx_usb->base + USB_EP_STAT(i));
 		D_INI(imx_usb->dev, "<%s> ep%d_stat %08x\n", __func__, i,
 			__raw_readl(imx_usb->base + USB_EP_STAT(i)));
 	}
@@ -283,18 +280,15 @@ void imx_ep_stall(struct imx_ep_struct *imx_ep)
 	struct imx_udc_struct *imx_usb = imx_ep->imx_usb;
 	int temp, i;
 
-	D_ERR(imx_usb->dev,
-		"<%s> Forced stall on %s\n", __func__, imx_ep->ep.name);
+	D_ERR(imx_usb->dev, "<%s> Forced stall on %s\n", __func__, imx_ep->ep.name);
 
 	imx_flush(imx_ep);
 
 	/* Special care for ep0 */
-	if (!EP_NO(imx_ep)) {
+	if (EP_NO(imx_ep)) {
 		temp = __raw_readl(imx_usb->base + USB_CTRL);
-		__raw_writel(temp | CTRL_CMDOVER | CTRL_CMDERROR,
-						imx_usb->base + USB_CTRL);
-		do { } while (__raw_readl(imx_usb->base + USB_CTRL)
-						& CTRL_CMDOVER);
+		__raw_writel(temp | CTRL_CMDOVER | CTRL_CMDERROR, imx_usb->base + USB_CTRL);
+		do { } while (__raw_readl(imx_usb->base + USB_CTRL) & CTRL_CMDOVER);
 		temp = __raw_readl(imx_usb->base + USB_CTRL);
 		__raw_writel(temp & ~CTRL_CMDERROR, imx_usb->base + USB_CTRL);
 	}
@@ -304,13 +298,12 @@ void imx_ep_stall(struct imx_ep_struct *imx_ep)
 			imx_usb->base + USB_EP_STAT(EP_NO(imx_ep)));
 
 		for (i = 0; i < 100; i ++) {
-			temp = __raw_readl(imx_usb->base
-						+ USB_EP_STAT(EP_NO(imx_ep)));
+			temp = __raw_readl(imx_usb->base + USB_EP_STAT(EP_NO(imx_ep)));
 			if (!(temp & EPSTAT_STALL))
 	 			break;
 	 		udelay(20);
 	 	}
-		if (i == 100)
+		if (i == 50)
 			D_ERR(imx_usb->dev, "<%s> Non finished stall on %s\n",
 				__func__, imx_ep->ep.name);
 	}
@@ -334,8 +327,7 @@ static int imx_udc_wakeup(struct usb_gadget *_gadget)
  *******************************************************************************
  */
 
-static void ep_add_request(struct imx_ep_struct *imx_ep,
-							struct imx_request *req)
+static void ep_add_request(struct imx_ep_struct *imx_ep, struct imx_request *req)
 {
 	if (unlikely(!req))
 		return;
@@ -344,8 +336,7 @@ static void ep_add_request(struct imx_ep_struct *imx_ep,
 	list_add_tail(&req->queue, &imx_ep->queue);
 }
 
-static void ep_del_request(struct imx_ep_struct *imx_ep,
-							struct imx_request *req)
+static void ep_del_request(struct imx_ep_struct *imx_ep, struct imx_request *req)
 {
 	if (unlikely(!req))
 		return;
@@ -354,8 +345,7 @@ static void ep_del_request(struct imx_ep_struct *imx_ep,
 	req->in_use = 0;
 }
 
-static void done(struct imx_ep_struct *imx_ep,
-					struct imx_request *req, int status)
+static void done(struct imx_ep_struct *imx_ep, struct imx_request *req, int status)
 {
 	ep_del_request(imx_ep, req);
 
@@ -415,13 +405,6 @@ static int write_packet(struct imx_ep_struct *imx_ep, struct imx_request *req)
 {
 	u8	*buf;
 	int	length, count, temp;
-
-	if (unlikely(__raw_readl(imx_ep->imx_usb->base +
-				 USB_EP_STAT(EP_NO(imx_ep))) & EPSTAT_ZLPS)) {
-		D_TRX(imx_ep->imx_usb->dev, "<%s> zlp still queued in EP %s\n",
-			__func__, imx_ep->ep.name);
-		return -1;
-	}
 
 	buf = req->req.buf + req->req.actual;
 	prefetch(buf);
@@ -559,9 +542,10 @@ static int handle_ep0(struct imx_ep_struct *imx_ep)
 	struct imx_request *req = NULL;
 	int ret = 0;
 
-	if (!list_empty(&imx_ep->queue)) {
+	if (!list_empty(&imx_ep->queue))
 		req = list_entry(imx_ep->queue.next, struct imx_request, queue);
 
+	if (req) {
 		switch (imx_ep->imx_usb->ep0state) {
 
 		case EP0_IN_DATA_PHASE:			/* GET_DESCRIPTOR */
@@ -579,10 +563,6 @@ static int handle_ep0(struct imx_ep_struct *imx_ep)
 			break;
 		}
 	}
-
-	else
-		D_ERR(imx_ep->imx_usb->dev, "<%s> no request on %s\n",
-						__func__, imx_ep->ep.name);
 
 	return ret;
 }
@@ -606,8 +586,7 @@ static void handle_ep0_devreq(struct imx_udc_struct *imx_usb)
 				"<%s> no setup packet received\n", __func__);
 			goto stall;
 		}
-		u.word[i] = __raw_readl(imx_usb->base
-						+ USB_EP_FDAT(EP_NO(imx_ep)));
+		u.word[i] = __raw_readl(imx_usb->base +	USB_EP_FDAT(EP_NO(imx_ep)));
 	}
 
 	temp = imx_ep_empty(imx_ep);
@@ -742,12 +721,9 @@ static struct usb_request *imx_ep_alloc_request
 {
 	struct imx_request *req;
 
-	if (!usb_ep)
-		return NULL;
-
 	req = kzalloc(sizeof *req, gfp_flags);
-	if (!req)
-		return NULL;
+	if (!req || !usb_ep)
+		return 0;
 
 	INIT_LIST_HEAD(&req->queue);
 	req->in_use = 0;
@@ -786,7 +762,7 @@ static int imx_ep_queue
 	*/
 	if (imx_usb->set_config && !EP_NO(imx_ep)) {
 		imx_usb->set_config = 0;
-		D_ERR(imx_usb->dev,
+		D_EPX(imx_usb->dev,
 			"<%s> gadget reply set config\n", __func__);
 		return 0;
 	}
@@ -806,25 +782,26 @@ static int imx_ep_queue
 		return -ESHUTDOWN;
 	}
 
+	local_irq_save(flags);
+
 	/* Debug */
 	D_REQ(imx_usb->dev, "<%s> ep%d %s request for [%d] bytes\n",
 		__func__, EP_NO(imx_ep),
-		((!EP_NO(imx_ep) && imx_ep->imx_usb->ep0state
-							== EP0_IN_DATA_PHASE)
-		|| (EP_NO(imx_ep) && EP_DIR(imx_ep)))
-					? "IN" : "OUT", usb_req->length);
+		((!EP_NO(imx_ep) && imx_ep->imx_usb->ep0state == EP0_IN_DATA_PHASE)
+ 		|| (EP_NO(imx_ep) && EP_DIR(imx_ep))) ? "IN" : "OUT", usb_req->length);
 	dump_req(__func__, imx_ep, usb_req);
 
 	if (imx_ep->stopped) {
 		usb_req->status = -ESHUTDOWN;
 		return -ESHUTDOWN;
+		goto out;
 	}
 
 	if (req->in_use) {
 		D_ERR(imx_usb->dev,
 			"<%s> refusing to queue req %p (already queued)\n",
 			__func__, req);
-		return 0;
+		goto out;
 	}
 
 	local_irq_save(flags);
@@ -838,7 +815,7 @@ static int imx_ep_queue
 		ret = handle_ep0(imx_ep);
 	else
 		ret = handle_ep(imx_ep);
-
+out:
 	local_irq_restore(flags);
 	return ret;
 }
@@ -1025,67 +1002,12 @@ static void udc_stop_activity(struct imx_udc_struct *imx_usb,
  *******************************************************************************
  */
 
-/*
- * Called when timer expires.
- * Timer is started when CFG_CHG is received.
- */
-static void handle_config(unsigned long data)
-{
-	struct imx_udc_struct *imx_usb = (void *)data;
-	struct usb_ctrlrequest u;
-	int temp, cfg, intf, alt;
-
-	local_irq_disable();
-
-	temp = __raw_readl(imx_usb->base + USB_STAT);
-	cfg  = (temp & STAT_CFG) >> 5;
-	intf = (temp & STAT_INTF) >> 3;
-	alt  =  temp & STAT_ALTSET;
-
-	D_REQ(imx_usb->dev,
-		"<%s> orig config C=%d, I=%d, A=%d / "
-		"req config C=%d, I=%d, A=%d\n",
-		__func__, imx_usb->cfg, imx_usb->intf, imx_usb->alt,
-		cfg, intf, alt);
-
-	if (cfg == 1 || cfg == 2) {
-
-		if (imx_usb->cfg != cfg) {
-			u.bRequest = USB_REQ_SET_CONFIGURATION;
-			u.bRequestType = USB_DIR_OUT |
-					USB_TYPE_STANDARD |
-					USB_RECIP_DEVICE;
-			u.wValue = cfg;
-			u.wIndex = 0;
-			u.wLength = 0;
-			imx_usb->cfg = cfg;
-			imx_usb->driver->setup(&imx_usb->gadget, &u);
-
-		}
-		if (imx_usb->intf != intf || imx_usb->alt != alt) {
-			u.bRequest = USB_REQ_SET_INTERFACE;
-			u.bRequestType = USB_DIR_OUT |
-					  USB_TYPE_STANDARD |
-					  USB_RECIP_INTERFACE;
-			u.wValue = alt;
-			u.wIndex = intf;
-			u.wLength = 0;
-			imx_usb->intf = intf;
-			imx_usb->alt = alt;
-			imx_usb->driver->setup(&imx_usb->gadget, &u);
-		}
-	}
-
-	imx_usb->set_config = 0;
-
-	local_irq_enable();
-}
-
 static irqreturn_t imx_udc_irq(int irq, void *dev)
 {
 	struct imx_udc_struct *imx_usb = dev;
+	struct usb_ctrlrequest u;
+	int temp, cfg, intf, alt;
 	int intr = __raw_readl(imx_usb->base + USB_INTR);
-	int temp;
 
 	if (intr & (INTR_WAKEUP | INTR_SUSPEND | INTR_RESUME | INTR_RESET_START
 			| INTR_RESET_STOP | INTR_CFG_CHG)) {
@@ -1094,38 +1016,7 @@ static irqreturn_t imx_udc_irq(int irq, void *dev)
 	}
 
 	if (!imx_usb->driver)
-		goto end_irq;
-
-	if (intr & INTR_SOF) {
-		/* Copy from Freescale BSP.
-		   We must enable SOF intr and set CMDOVER.
-		   Datasheet don't specifiy this action, but it
-		   is done in Freescale BSP, so just copy it.
-		*/
-		if (imx_usb->ep0state == EP0_IDLE) {
-			temp = __raw_readl(imx_usb->base + USB_CTRL);
-			__raw_writel(temp | CTRL_CMDOVER,
-						imx_usb->base + USB_CTRL);
-		}
-	}
-
-	if (intr & INTR_CFG_CHG) {
-		/* A workaround of serious IMX UDC bug.
-		   Handling of CFG_CHG should be delayed for some time, because
-		   IMX does not NACK the host when CFG_CHG interrupt is pending.
-		   There is no time to handle current CFG_CHG
-		   if next CFG_CHG or SETUP packed is send immediately.
-		   We have to clear CFG_CHG, start the timer and
-		   NACK the host by setting CTRL_CMDOVER
-		   if it sends any SETUP packet.
-		   When timer expires, handler is called to handle configuration
-		   changes. While CFG_CHG is not handled (set_config=1),
-		   we must NACK the host to every SETUP packed.
-		   This delay prevents from going out of sync with host.
-		 */
-		__raw_writel(INTR_CFG_CHG, imx_usb->base + USB_INTR);
-		imx_usb->set_config = 1;
-		mod_timer(&imx_usb->timer, jiffies + 5);
+		/*imx_udc_disable(imx_usb);*/
 		goto end_irq;
 	}
 
@@ -1134,7 +1025,6 @@ static irqreturn_t imx_udc_irq(int irq, void *dev)
 			&& imx_usb->driver && imx_usb->driver->resume)
 				imx_usb->driver->resume(&imx_usb->gadget);
 		imx_usb->set_config = 0;
-		del_timer(&imx_usb->timer);
 		imx_usb->gadget.speed = USB_SPEED_FULL;
 	}
 
@@ -1143,7 +1033,6 @@ static irqreturn_t imx_udc_irq(int irq, void *dev)
 			&& imx_usb->driver && imx_usb->driver->suspend)
 				imx_usb->driver->suspend(&imx_usb->gadget);
 		imx_usb->set_config = 0;
-		del_timer(&imx_usb->timer);
 		imx_usb->gadget.speed = USB_SPEED_UNKNOWN;
 	}
 
@@ -1151,13 +1040,72 @@ static irqreturn_t imx_udc_irq(int irq, void *dev)
 		__raw_writel(intr, imx_usb->base + USB_INTR);
 		udc_stop_activity(imx_usb, imx_usb->driver);
 		imx_usb->set_config = 0;
-		del_timer(&imx_usb->timer);
 		imx_usb->gadget.speed = USB_SPEED_UNKNOWN;
 	}
 
 	if (intr & INTR_RESET_STOP)
 		imx_usb->gadget.speed = USB_SPEED_FULL;
 
+ 	if (intr & INTR_CFG_CHG) {
+ 		__raw_writel(INTR_CFG_CHG, imx_usb->base + USB_INTR);
+ 		temp = __raw_readl(imx_usb->base + USB_STAT);
+ 		cfg  = (temp & STAT_CFG) >> 5;
+ 		intf = (temp & STAT_INTF) >> 3;
+ 		alt  =  temp & STAT_ALTSET;
+ 
+ 		D_REQ(imx_usb->dev,
+ 			"<%s> orig config C=%d, I=%d, A=%d / "
+ 			"req config C=%d, I=%d, A=%d\n",
+ 			__func__, imx_usb->cfg, imx_usb->intf, imx_usb->alt,
+ 			cfg, intf, alt);
+ 
+ 		if (cfg != 1 && cfg != 2)
+ 			goto end_irq;
+ 
+ 		imx_usb->set_config = 0;
+ 
+ 		/* Config setup */
+ 		if (imx_usb->cfg != cfg) {
+ 			D_REQ(imx_usb->dev, "<%s> Change config start\n",__func__);
+ 			u.bRequest = USB_REQ_SET_CONFIGURATION;
+ 			u.bRequestType = USB_DIR_OUT |
+ 					USB_TYPE_STANDARD |
+ 					USB_RECIP_DEVICE;
+ 			u.wValue = cfg;
+ 			u.wIndex = 0;
+ 			u.wLength = 0;
+ 			imx_usb->cfg = cfg;
+ 			imx_usb->set_config = 1;
+ 			imx_usb->driver->setup(&imx_usb->gadget, &u);
+ 			imx_usb->set_config = 0;
+ 			D_REQ(imx_usb->dev, "<%s> Change config done\n",__func__);
+ 
+ 		}
+ 		if (imx_usb->intf != intf || imx_usb->alt != alt) {
+ 			D_REQ(imx_usb->dev, "<%s> Change interface start\n",__func__);
+ 			u.bRequest = USB_REQ_SET_INTERFACE;
+ 			u.bRequestType = USB_DIR_OUT |
+ 					  USB_TYPE_STANDARD |
+ 					  USB_RECIP_INTERFACE;
+ 			u.wValue = alt;
+ 			u.wIndex = intf;
+ 			u.wLength = 0;
+ 			imx_usb->intf = intf;
+ 			imx_usb->alt = alt;
+ 			imx_usb->set_config = 1;
+ 			imx_usb->driver->setup(&imx_usb->gadget, &u);
+ 			imx_usb->set_config = 0;
+ 			D_REQ(imx_usb->dev, "<%s> Change interface done\n",__func__);
+ 		}
+ 	}
+ 
+ 	if (intr & INTR_SOF) {
+ 		if (imx_usb->ep0state == EP0_IDLE) {
+ 			temp = __raw_readl(imx_usb->base + USB_CTRL);
+ 			__raw_writel(temp | CTRL_CMDOVER, imx_usb->base + USB_CTRL);
+ 		}
+ 	}
+ 
 end_irq:
 	__raw_writel(intr, imx_usb->base + USB_INTR);
 	return IRQ_HANDLED;
@@ -1166,7 +1114,6 @@ end_irq:
 static irqreturn_t imx_udc_ctrl_irq(int irq, void *dev)
 {
 	struct imx_udc_struct *imx_usb = dev;
-	struct imx_ep_struct *imx_ep = &imx_usb->imx_ep[0];
 	int intr = __raw_readl(imx_usb->base + USB_EP_INTR(0));
 
 	dump_ep_intr(__func__, 0, intr, imx_usb->dev);
@@ -1176,15 +1123,16 @@ static irqreturn_t imx_udc_ctrl_irq(int irq, void *dev)
 		return IRQ_HANDLED;
 	}
 
-	/* DEVREQ has highest priority */
+	/* DEVREQ IRQ has highest priority */
 	if (intr & (EPINTR_DEVREQ | EPINTR_MDEVREQ))
 		handle_ep0_devreq(imx_usb);
 	/* Seem i.MX is missing EOF interrupt sometimes.
-	 * Therefore we don't monitor EOF.
-	 * We call handle_ep0() only if a request is queued for ep0.
+	* Therefore we monitor both EOF and FIFO_EMPTY interrups
+	* when transmiting, and both EOF and FIFO_FULL when
+	  * receiving data.
 	 */
-	else if (!list_empty(&imx_ep->queue))
-		handle_ep0(imx_ep);
+	else if (intr & (EPINTR_EOF | EPINTR_FIFO_EMPTY | EPINTR_FIFO_FULL))
+		handle_ep0(&imx_usb->imx_ep[0]);
 
 	__raw_writel(intr, imx_usb->base + USB_EP_INTR(0));
 
@@ -1243,7 +1191,7 @@ static struct imx_udc_struct controller = {
 		.ep0		= &controller.imx_ep[0].ep,
 		.name		= driver_name,
 		.dev = {
-			.init_name	= "gadget",
+			.bus_id	= "gadget",
 		},
 	},
 
@@ -1376,7 +1324,6 @@ int usb_gadget_unregister_driver(struct usb_gadget_driver *driver)
 
 	udc_stop_activity(imx_usb, driver);
 	imx_udc_disable(imx_usb);
-	del_timer(&imx_usb->timer);
 
 	driver->unbind(&imx_usb->gadget);
 	imx_usb->gadget.dev.driver = NULL;
@@ -1404,8 +1351,7 @@ static int __init imx_udc_probe(struct platform_device *pdev)
 	struct clk *clk;
 	void __iomem *base;
 	int ret = 0;
-	int i;
-	resource_size_t res_size;
+	int i, res_size;
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!res) {
@@ -1419,7 +1365,7 @@ static int __init imx_udc_probe(struct platform_device *pdev)
 		return -ENODEV;
 	}
 
-	res_size = resource_size(res);
+	res_size = res->end - res->start + 1;
 	if (!request_mem_region(res->start, res_size, res->name)) {
 		dev_err(&pdev->dev, "can't allocate %d bytes at %d address\n",
 			res_size, res->start);
@@ -1495,10 +1441,6 @@ static int __init imx_udc_probe(struct platform_device *pdev)
 	usb_init_data(imx_usb);
 	imx_udc_init(imx_usb);
 
-	init_timer(&imx_usb->timer);
-	imx_usb->timer.function = handle_config;
-	imx_usb->timer.data = (unsigned long)imx_usb;
-
 	return 0;
 
 fail3:
@@ -1521,8 +1463,7 @@ static int __exit imx_udc_remove(struct platform_device *pdev)
 	int i;
 
 	imx_udc_disable(imx_usb);
-	del_timer(&imx_usb->timer);
-
+	
 	for (i = 0; i < IMX_USB_NB_EP + 1; i++)
 		free_irq(imx_usb->usbd_int[i], imx_usb);
 
@@ -1530,7 +1471,8 @@ static int __exit imx_udc_remove(struct platform_device *pdev)
 	clk_disable(imx_usb->clk);
 	iounmap(imx_usb->base);
 
-	release_mem_region(imx_usb->res->start, resource_size(imx_usb->res));
+	release_mem_region(imx_usb->res->start,
+ 		imx_usb->res->end - imx_usb->res->start + 1);
 
 	if (pdata->exit)
 		pdata->exit(&pdev->dev);

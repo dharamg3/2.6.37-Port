@@ -41,6 +41,7 @@
 #undef	VERBOSE_DEBUG
 
 #include "rndis.h"
+#include "u_ether.h"
 
 
 /* The driver for your USB chip needs to support ep0 OUT to work with

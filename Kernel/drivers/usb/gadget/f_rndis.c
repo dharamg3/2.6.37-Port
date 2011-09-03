@@ -726,13 +726,8 @@ rndis_bind(struct usb_configuration *c, struct usb_function *f)
 	rndis_set_param_medium(rndis->config, NDIS_MEDIUM_802_3, 0);
 	rndis_set_host_mac(rndis->config, rndis->ethaddr);
 
-#ifdef CONFIG_USB_ANDROID_RNDIS
-	if (rndis_pdata) {
-		if (rndis_set_param_vendor(rndis->config, rndis_pdata->vendorID,
-					rndis_pdata->vendorDescr))
-			goto fail;
-	}
-#endif
+ 	if (rndis_set_param_vendor(rndis->config, 0x04E8, "SAMSUNG"))
+ 		goto fail;
 
 	/* NOTE:  all that is done without knowing or caring about
 	 * the network link ... which is unavailable to this code
@@ -793,6 +788,8 @@ static inline bool can_support_rndis(struct usb_configuration *c)
 	/* everything else is *presumably* fine */
 	return true;
 }
+
+static struct f_rndis	*the_rndis;
 
 /**
  * rndis_bind_config - add RNDIS network link to a configuration
@@ -864,11 +861,15 @@ rndis_bind_config(struct usb_configuration *c, u8 ethaddr[ETH_ALEN])
 	rndis->port.func.name = "rndis";
 	rndis->port.func.strings = rndis_strings;
 	/* descriptors are per-instance copies */
+	rndis->port.func.descriptors = eth_fs_function;
+ 	rndis->port.func.hs_descriptors = eth_hs_function;
 	rndis->port.func.bind = rndis_bind;
 	rndis->port.func.unbind = rndis_unbind;
 	rndis->port.func.set_alt = rndis_set_alt;
 	rndis->port.func.setup = rndis_setup;
 	rndis->port.func.disable = rndis_disable;
+
+	the_rndis = rndis;
 
 #ifdef CONFIG_USB_ANDROID_RNDIS
 	/* start disabled */
@@ -884,6 +885,42 @@ fail:
 	return status;
 }
 
+ 
+ int rndis_function_config_changed(struct usb_composite_dev *cdev,	struct usb_configuration *c)
+ {
+ 	struct f_rndis	*rndis = the_rndis;
+ 	int		status;
+ 	
+ 	printk(KERN_INFO "rndis_function_config_changed\n");
+ 
+ 	rndis->port.func.descriptors = eth_fs_function;
+ 	rndis->port.func.hs_descriptors = eth_hs_function;
+ 	rndis->port.func.bind = NULL;
+ 	
+ 	status = usb_add_function(c, &rndis->port.func);
+ 	if (status)
+ 		printk("usb_add_function failed\n");
+ 
+ 	/* allocate instance-specific interface IDs */
+ 	status = usb_interface_id(c, &rndis->port.func);
+ 	if (status < 0)
+ 		return status;
+ 	rndis->ctrl_id = status;
+ 
+ 	rndis_control_intf.bInterfaceNumber = status;
+ 	rndis_union_desc.bMasterInterface0 = status;
+ 
+ 	status = usb_interface_id(c, &rndis->port.func);
+ 	if (status < 0)
+ 		return status;
+ 	rndis->data_id = status;
+ 
+ 	rndis_data_intf.bInterfaceNumber = status;
+ 	rndis_union_desc.bSlaveInterface0 = status;
+ 
+ 	return 0;
+ }
+ 
 #ifdef CONFIG_USB_ANDROID_RNDIS
 #include "rndis.c"
 

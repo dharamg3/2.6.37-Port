@@ -30,7 +30,6 @@
 #include <linux/proc_fs.h>
 #include <linux/clk.h>
 #include <linux/irq.h>
-#include <linux/gpio.h>
 #include <linux/slab.h>
 
 #include <asm/byteorder.h>
@@ -39,6 +38,7 @@
 #include <linux/usb.h>
 #include <linux/usb/ch9.h>
 #include <linux/usb/gadget.h>
+#include <mach/pxa2xx-regs.h> /* FIXME: for PSSR */
 #include <mach/udc.h>
 
 #include "pxa27x_udc.h"
@@ -279,7 +279,7 @@ static void pxa_init_debugfs(struct pxa_udc *udc)
 		goto err_queues;
 	eps = debugfs_create_file("epstate", 0400, root, udc,
 			&eps_dbg_fops);
-	if (!eps)
+	if (!queues)
 		goto err_eps;
 
 	udc->debugfs_root = root;
@@ -471,23 +471,6 @@ static inline void udc_clear_mask_UDCCR(struct pxa_udc *udc, int mask)
 	u32 udccr = udc_readl(udc, UDCCR);
 	udc_writel(udc, UDCCR,
 			(udccr & UDCCR_MASK_BITS) & ~(mask & UDCCR_MASK_BITS));
-}
-
-/**
- * ep_write_UDCCSR - set bits in UDCCSR
- * @udc: udc device
- * @mask: bits to set in UDCCR
- *
- * Sets bits in UDCCSR (UDCCSR0 and UDCCSR*).
- *
- * A specific case is applied to ep0 : the ACM bit is always set to 1, for
- * SET_INTERFACE and SET_CONFIGURATION.
- */
-static inline void ep_write_UDCCSR(struct pxa_ep *ep, int mask)
-{
-	if (is_ep0(ep))
-		mask |= UDCCSR0_ACM;
-	udc_ep_writel(ep, UDCCSR, mask);
 }
 
 /**
@@ -775,14 +758,14 @@ static void req_done(struct pxa_ep *ep, struct pxa27x_request *req, int status,
 }
 
 /**
- * ep_end_out_req - Ends endpoint OUT request
+ * ep_end_out_req - Ends control endpoint in request
  * @ep: physical endpoint
  * @req: pxa request
  * @pflags: flags of previous spinlock_irq_save() or NULL if no lock held
  *
  * Context: ep->lock held or released (see req_done())
  *
- * Ends endpoint OUT request (completes usb request).
+ * Ends endpoint in request (completes usb request).
  */
 static void ep_end_out_req(struct pxa_ep *ep, struct pxa27x_request *req,
 	unsigned long *pflags)
@@ -792,14 +775,14 @@ static void ep_end_out_req(struct pxa_ep *ep, struct pxa27x_request *req,
 }
 
 /**
- * ep0_end_out_req - Ends control endpoint OUT request (ends data stage)
+ * ep0_end_out_req - Ends control endpoint in request (ends data stage)
  * @ep: physical endpoint
  * @req: pxa request
  * @pflags: flags of previous spinlock_irq_save() or NULL if no lock held
  *
  * Context: ep->lock held or released (see req_done())
  *
- * Ends control endpoint OUT request (completes usb request), and puts
+ * Ends control endpoint in request (completes usb request), and puts
  * control endpoint into idle state
  */
 static void ep0_end_out_req(struct pxa_ep *ep, struct pxa27x_request *req,
@@ -811,14 +794,14 @@ static void ep0_end_out_req(struct pxa_ep *ep, struct pxa27x_request *req,
 }
 
 /**
- * ep_end_in_req - Ends endpoint IN request
+ * ep_end_in_req - Ends endpoint out request
  * @ep: physical endpoint
  * @req: pxa request
  * @pflags: flags of previous spinlock_irq_save() or NULL if no lock held
  *
  * Context: ep->lock held or released (see req_done())
  *
- * Ends endpoint IN request (completes usb request).
+ * Ends endpoint out request (completes usb request).
  */
 static void ep_end_in_req(struct pxa_ep *ep, struct pxa27x_request *req,
 	unsigned long *pflags)
@@ -828,20 +811,22 @@ static void ep_end_in_req(struct pxa_ep *ep, struct pxa27x_request *req,
 }
 
 /**
- * ep0_end_in_req - Ends control endpoint IN request (ends data stage)
+ * ep0_end_in_req - Ends control endpoint out request (ends data stage)
  * @ep: physical endpoint
  * @req: pxa request
  * @pflags: flags of previous spinlock_irq_save() or NULL if no lock held
  *
  * Context: ep->lock held or released (see req_done())
  *
- * Ends control endpoint IN request (completes usb request), and puts
+ * Ends control endpoint out request (completes usb request), and puts
  * control endpoint into status state
  */
 static void ep0_end_in_req(struct pxa_ep *ep, struct pxa27x_request *req,
 	unsigned long *pflags)
 {
-	set_ep0state(ep->dev, IN_STATUS_STAGE);
+	struct pxa_udc *udc = ep->dev;
+
+	set_ep0state(udc, IN_STATUS_STAGE);
 	ep_end_in_req(ep, req, pflags);
 }
 
@@ -899,7 +884,7 @@ static int read_packet(struct pxa_ep *ep, struct pxa27x_request *req)
 		*buf++ = udc_ep_readl(ep, UDCDR);
 	req->req.actual += count;
 
-	ep_write_UDCCSR(ep, UDCCSR_PC);
+	udc_ep_writel(ep, UDCCSR, UDCCSR_PC);
 
 	return count;
 }
@@ -1007,12 +992,12 @@ static int write_fifo(struct pxa_ep *ep, struct pxa27x_request *req)
 		if (udccsr & UDCCSR_PC) {
 			ep_vdbg(ep, "Clearing Transmit Complete, udccsr=%x\n",
 				udccsr);
-			ep_write_UDCCSR(ep, UDCCSR_PC);
+			udc_ep_writel(ep, UDCCSR, UDCCSR_PC);
 		}
 		if (udccsr & UDCCSR_TRN) {
 			ep_vdbg(ep, "Clearing Underrun on, udccsr=%x\n",
 				udccsr);
-			ep_write_UDCCSR(ep, UDCCSR_TRN);
+			udc_ep_writel(ep, UDCCSR, UDCCSR_TRN);
 		}
 
 		count = write_packet(ep, req, max);
@@ -1034,7 +1019,7 @@ static int write_fifo(struct pxa_ep *ep, struct pxa27x_request *req)
 		}
 
 		if (is_short)
-			ep_write_UDCCSR(ep, UDCCSR_SP);
+			udc_ep_writel(ep, UDCCSR, UDCCSR_SP);
 
 		/* requests complete when all IN data is in the FIFO */
 		if (is_last) {
@@ -1067,7 +1052,7 @@ static int read_ep0_fifo(struct pxa_ep *ep, struct pxa27x_request *req)
 
 	while (epout_has_pkt(ep)) {
 		count = read_packet(ep, req);
-		ep_write_UDCCSR(ep, UDCCSR0_OPC);
+		udc_ep_writel(ep, UDCCSR, UDCCSR0_OPC);
 		inc_ep_stats_bytes(ep, count, !USB_DIR_IN);
 
 		is_short = (count < ep->fifo_size);
@@ -1112,7 +1097,7 @@ static int write_ep0_fifo(struct pxa_ep *ep, struct pxa27x_request *req)
 
 	/* Sends either a short packet or a 0 length packet */
 	if (unlikely(is_short))
-		ep_write_UDCCSR(ep, UDCCSR0_IPR);
+		udc_ep_writel(ep, UDCCSR, UDCCSR0_IPR);
 
 	ep_dbg(ep, "in %d bytes%s%s, %d left, req=%p, udccsr0=0x%03x\n",
 		count, is_short ? "/S" : "", is_last ? "/L" : "",
@@ -1207,7 +1192,7 @@ static int pxa_ep_queue(struct usb_ep *_ep, struct usb_request *_req,
 				ep_end_in_req(ep, req, NULL);
 			} else {
 				ep_err(ep, "got a request of %d bytes while"
-					"in state WAIT_ACK_SET_CONF_INTERF\n",
+					"in state WATI_ACK_SET_CONF_INTERF\n",
 					length);
 				ep_del_request(ep, req);
 				rc = -EL2HLT;
@@ -1256,24 +1241,31 @@ static int pxa_ep_dequeue(struct usb_ep *_ep, struct usb_request *_req)
 	struct udc_usb_ep	*udc_usb_ep;
 	struct pxa27x_request	*req;
 	unsigned long		flags;
-	int			rc = -EINVAL;
+	int			rc;
 
 	if (!_ep)
-		return rc;
+		return -EINVAL;
 	udc_usb_ep = container_of(_ep, struct udc_usb_ep, usb_ep);
 	ep = udc_usb_ep->pxa_ep;
 	if (!ep || is_ep0(ep))
-		return rc;
+		return -EINVAL;
 
 	spin_lock_irqsave(&ep->lock, flags);
 
 	/* make sure it's actually queued on this endpoint */
 	list_for_each_entry(req, &ep->queue, queue) {
-		if (&req->req == _req) {
-			rc = 0;
+		if (&req->req == _req)
 			break;
 		}
 	}
+
+	rc = -EINVAL;
+	if (&req->req != _req)
+		goto out;
+
+	rc = 0;
+	req_done(ep, req, -ECONNRESET);
+out:
 
 	spin_unlock_irqrestore(&ep->lock, flags);
 	if (!rc)
@@ -1322,7 +1314,7 @@ static int pxa_ep_set_halt(struct usb_ep *_ep, int value)
 
 	/* FST, FEF bits are the same for control and non control endpoints */
 	rc = 0;
-	ep_write_UDCCSR(ep, UDCCSR_FST | UDCCSR_FEF);
+	udc_ep_writel(ep, UDCCSR, UDCCSR_FST | UDCCSR_FEF);
 	if (is_ep0(ep))
 		set_ep0state(ep->dev, STALL);
 
@@ -1388,7 +1380,7 @@ static void pxa_ep_fifo_flush(struct usb_ep *_ep)
 			udc_ep_readl(ep, UDCDR);
 	} else {
 		/* most IN status is the same, but ISO can't stall */
-		ep_write_UDCCSR(ep,
+		udc_ep_writel(ep, UDCCSR,
 				UDCCSR_PC | UDCCSR_FEF | UDCCSR_TRN
 				| (EPXFERTYPE_is_ISO(ep) ? 0 : UDCCSR_SST));
 	}
@@ -1507,33 +1499,6 @@ static struct usb_ep_ops pxa_ep_ops = {
 };
 
 /**
- * dplus_pullup - Connect or disconnect pullup resistor to D+ pin
- * @udc: udc device
- * @on: 0 if disconnect pullup resistor, 1 otherwise
- * Context: any
- *
- * Handle D+ pullup resistor, make the device visible to the usb bus, and
- * declare it as a full speed usb device
- */
-static void dplus_pullup(struct pxa_udc *udc, int on)
-{
-	if (on) {
-		if (gpio_is_valid(udc->mach->gpio_pullup))
-			gpio_set_value(udc->mach->gpio_pullup,
-				       !udc->mach->gpio_pullup_inverted);
-		if (udc->mach->udc_command)
-			udc->mach->udc_command(PXA2XX_UDC_CMD_CONNECT);
-	} else {
-		if (gpio_is_valid(udc->mach->gpio_pullup))
-			gpio_set_value(udc->mach->gpio_pullup,
-				       udc->mach->gpio_pullup_inverted);
-		if (udc->mach->udc_command)
-			udc->mach->udc_command(PXA2XX_UDC_CMD_DISCONNECT);
-	}
-	udc->pullup_on = on;
-}
-
-/**
  * pxa_udc_get_frame - Returns usb frame number
  * @_gadget: usb gadget
  */
@@ -1561,144 +1526,22 @@ static int pxa_udc_wakeup(struct usb_gadget *_gadget)
 	return 0;
 }
 
-static void udc_enable(struct pxa_udc *udc);
-static void udc_disable(struct pxa_udc *udc);
-
-/**
- * should_enable_udc - Tells if UDC should be enabled
- * @udc: udc device
- * Context: any
- *
- * The UDC should be enabled if :
-
- *  - the pullup resistor is connected
- *  - and a gadget driver is bound
- *  - and vbus is sensed (or no vbus sense is available)
- *
- * Returns 1 if UDC should be enabled, 0 otherwise
- */
-static int should_enable_udc(struct pxa_udc *udc)
-{
-	int put_on;
-
-	put_on = ((udc->pullup_on) && (udc->driver));
-	put_on &= ((udc->vbus_sensed) || (!udc->transceiver));
-	return put_on;
-}
-
-/**
- * should_disable_udc - Tells if UDC should be disabled
- * @udc: udc device
- * Context: any
- *
- * The UDC should be disabled if :
- *  - the pullup resistor is not connected
- *  - or no gadget driver is bound
- *  - or no vbus is sensed (when vbus sesing is available)
- *
- * Returns 1 if UDC should be disabled
- */
-static int should_disable_udc(struct pxa_udc *udc)
-{
-	int put_off;
-
-	put_off = ((!udc->pullup_on) || (!udc->driver));
-	put_off |= ((!udc->vbus_sensed) && (udc->transceiver));
-	return put_off;
-}
-
-/**
- * pxa_udc_pullup - Offer manual D+ pullup control
- * @_gadget: usb gadget using the control
- * @is_active: 0 if disconnect, else connect D+ pullup resistor
- * Context: !in_interrupt()
- *
- * Returns 0 if OK, -EOPNOTSUPP if udc driver doesn't handle D+ pullup
- */
-static int pxa_udc_pullup(struct usb_gadget *_gadget, int is_active)
-{
-	struct pxa_udc *udc = to_gadget_udc(_gadget);
-
-	if (!gpio_is_valid(udc->mach->gpio_pullup) && !udc->mach->udc_command)
-		return -EOPNOTSUPP;
-
-	dplus_pullup(udc, is_active);
-
-	if (should_enable_udc(udc))
-		udc_enable(udc);
-	if (should_disable_udc(udc))
-		udc_disable(udc);
-	return 0;
-}
-
-static void udc_enable(struct pxa_udc *udc);
-static void udc_disable(struct pxa_udc *udc);
-
-/**
- * pxa_udc_vbus_session - Called by external transceiver to enable/disable udc
- * @_gadget: usb gadget
- * @is_active: 0 if should disable the udc, 1 if should enable
- *
- * Enables the udc, and optionnaly activates D+ pullup resistor. Or disables the
- * udc, and deactivates D+ pullup resistor.
- *
- * Returns 0
- */
-static int pxa_udc_vbus_session(struct usb_gadget *_gadget, int is_active)
-{
-	struct pxa_udc *udc = to_gadget_udc(_gadget);
-
-	udc->vbus_sensed = is_active;
-	if (should_enable_udc(udc))
-		udc_enable(udc);
-	if (should_disable_udc(udc))
-		udc_disable(udc);
-
-	return 0;
-}
-
-/**
- * pxa_udc_vbus_draw - Called by gadget driver after SET_CONFIGURATION completed
- * @_gadget: usb gadget
- * @mA: current drawn
- *
- * Context: !in_interrupt()
- *
- * Called after a configuration was chosen by a USB host, to inform how much
- * current can be drawn by the device from VBus line.
- *
- * Returns 0 or -EOPNOTSUPP if no transceiver is handling the udc
- */
-static int pxa_udc_vbus_draw(struct usb_gadget *_gadget, unsigned mA)
-{
-	struct pxa_udc *udc;
-
-	udc = to_gadget_udc(_gadget);
-	if (udc->transceiver)
-		return otg_set_power(udc->transceiver, mA);
-	return -EOPNOTSUPP;
-}
 
 static const struct usb_gadget_ops pxa_udc_ops = {
 	.get_frame	= pxa_udc_get_frame,
 	.wakeup		= pxa_udc_wakeup,
-	.pullup		= pxa_udc_pullup,
-	.vbus_session	= pxa_udc_vbus_session,
-	.vbus_draw	= pxa_udc_vbus_draw,
+	/* current versions must always be self-powered */
 };
 
 /**
  * udc_disable - disable udc device controller
  * @udc: udc device
- * Context: any
  *
  * Disables the udc device : disables clocks, udc interrupts, control endpoint
  * interrupts.
  */
 static void udc_disable(struct pxa_udc *udc)
 {
-	if (!udc->enabled)
-		return;
 
 	udc_writel(udc, UDCICR0, 0);
 	udc_writel(udc, UDCICR1, 0);
@@ -1708,8 +1551,8 @@ static void udc_disable(struct pxa_udc *udc)
 
 	ep0_idle(udc);
 	udc->gadget.speed = USB_SPEED_UNKNOWN;
-
-	udc->enabled = 0;
+ 	if (udc->mach->udc_command)
+ 		udc->mach->udc_command(PXA2XX_UDC_CMD_DISCONNECT);
 }
 
 /**
@@ -1740,9 +1583,10 @@ static __init void udc_init_data(struct pxa_udc *dev)
 	}
 
 	/* USB endpoints init */
-	for (i = 1; i < NR_USB_ENDPOINTS; i++)
-		list_add_tail(&dev->udc_usb_ep[i].usb_ep.ep_list,
-				&dev->gadget.ep_list);
+ 	for (i = 0; i < NR_USB_ENDPOINTS; i++)
+ 		if (i != 0)
+ 			list_add_tail(&dev->udc_usb_ep[i].usb_ep.ep_list,
+ 					&dev->gadget.ep_list);
 }
 
 /**
@@ -1754,9 +1598,6 @@ static __init void udc_init_data(struct pxa_udc *dev)
  */
 static void udc_enable(struct pxa_udc *udc)
 {
-	if (udc->enabled)
-		return;
-
 	udc_writel(udc, UDCICR0, 0);
 	udc_writel(udc, UDCICR1, 0);
 	udc_clear_mask_UDCCR(udc, UDCCR_UDE);
@@ -1768,7 +1609,6 @@ static void udc_enable(struct pxa_udc *udc)
 	memset(&udc->stats, 0, sizeof(udc->stats));
 
 	udc_set_mask_UDCCR(udc, UDCCR_UDE);
-	ep_write_UDCCSR(&udc->pxa_ep[0], UDCCSR0_ACM);
 	udelay(2);
 	if (udc_readl(udc, UDCCR) & UDCCR_EMCE)
 		dev_err(udc->dev, "Configuration errors, udc disabled\n");
@@ -1786,7 +1626,9 @@ static void udc_enable(struct pxa_udc *udc)
 	/* enable ep0 irqs */
 	pio_irq_enable(&udc->pxa_ep[0]);
 
-	udc->enabled = 1;
+ 	dev_info(udc->dev, "UDC connecting\n");
+ 	if (udc->mach->udc_command)
+ 		udc->mach->udc_command(PXA2XX_UDC_CMD_CONNECT);
 }
 
 /**
@@ -1798,9 +1640,6 @@ static void udc_enable(struct pxa_udc *udc)
  * including set_configuration(), which enables non-control requests.  Then
  * usb traffic follows until a disconnect is reported.  Then a host may connect
  * again, or the driver might get unbound.
- *
- * Note that the udc is not automatically enabled. Check function
- * should_enable_udc().
  *
  * Returns 0 if no error, -EINVAL, -ENODEV, -EBUSY otherwise
  */
@@ -1821,7 +1660,6 @@ int usb_gadget_probe_driver(struct usb_gadget_driver *driver,
 	/* first hook up the driver ... */
 	udc->driver = driver;
 	udc->gadget.dev.driver = &driver->driver;
-	dplus_pullup(udc, 1);
 
 	retval = device_add(&udc->gadget.dev);
 	if (retval) {
@@ -1837,21 +1675,9 @@ int usb_gadget_probe_driver(struct usb_gadget_driver *driver,
 	dev_dbg(udc->dev, "registered gadget driver '%s'\n",
 		driver->driver.name);
 
-	if (udc->transceiver) {
-		retval = otg_set_peripheral(udc->transceiver, &udc->gadget);
-		if (retval) {
-			dev_err(udc->dev, "can't bind to transceiver\n");
-			goto transceiver_fail;
-		}
-	}
-
-	if (should_enable_udc(udc))
-		udc_enable(udc);
+	udc_enable(udc);
 	return 0;
 
-transceiver_fail:
-	if (driver->unbind)
-		driver->unbind(&udc->gadget);
 bind_fail:
 	device_del(&udc->gadget.dev);
 add_fail:
@@ -1903,7 +1729,6 @@ int usb_gadget_unregister_driver(struct usb_gadget_driver *driver)
 
 	stop_activity(udc, driver);
 	udc_disable(udc);
-	dplus_pullup(udc, 0);
 
 	driver->unbind(&udc->gadget);
 	udc->driver = NULL;
@@ -1912,8 +1737,6 @@ int usb_gadget_unregister_driver(struct usb_gadget_driver *driver)
 	dev_info(udc->dev, "unregistered gadget driver '%s'\n",
 		 driver->driver.name);
 
-	if (udc->transceiver)
-		return otg_set_peripheral(udc->transceiver, NULL);
 	return 0;
 }
 EXPORT_SYMBOL(usb_gadget_unregister_driver);
@@ -1937,15 +1760,6 @@ static void handle_ep0_ctrl_req(struct pxa_udc *udc,
 
 	nuke(ep, -EPROTO);
 	spin_lock_irqsave(&ep->lock, flags);
-
-	/*
-	 * In the PXA320 manual, in the section about Back-to-Back setup
-	 * packets, it describes this situation.  The solution is to set OPC to
-	 * get rid of the status packet, and then continue with the setup
-	 * packet. Generalize to pxa27x CPUs.
-	 */
-	if (epout_has_pkt(ep) && (ep_count_bytes_remain(ep) == 0))
-		ep_write_UDCCSR(ep, UDCCSR0_OPC);
 
 	/* read SETUP packet */
 	for (i = 0; i < 2; i++) {
@@ -1973,7 +1787,7 @@ static void handle_ep0_ctrl_req(struct pxa_udc *udc,
 		set_ep0state(udc, OUT_DATA_STAGE);
 
 	/* Tell UDC to enter Data Stage */
-	ep_write_UDCCSR(ep, UDCCSR0_SA | UDCCSR0_OPC);
+	udc_ep_writel(ep, UDCCSR, UDCCSR0_SA | UDCCSR0_OPC);
 
 	spin_unlock_irqrestore(&ep->lock, flags);
 	i = udc->driver->setup(&udc->gadget, &u.r);
@@ -1986,7 +1800,7 @@ out:
 stall:
 	ep_dbg(ep, "protocol STALL, udccsr0=%03x err %d\n",
 		udc_ep_readl(ep, UDCCSR), i);
-	ep_write_UDCCSR(ep, UDCCSR0_FST | UDCCSR0_FTF);
+	udc_ep_writel(ep, UDCCSR, UDCCSR0_FST | UDCCSR0_FTF);
 	set_ep0state(udc, STALL);
 	goto out;
 }
@@ -2023,8 +1837,6 @@ stall:
  *     cleared by software.
  *   - clearing UDCCSR0_OPC always flushes ep0. If in setup stage, never do it
  *     before reading ep0.
- *     This is true only for PXA27x. This is not true anymore for PXA3xx family
- *     (check Back-to-Back setup packet in developers guide).
  *   - irq can be called on a "packet complete" event (opc_irq=1), while
  *     UDCCSR0_OPC is not yet raised (delta can be as big as 100ms
  *     from experimentation).
@@ -2046,18 +1858,18 @@ static void handle_ep0(struct pxa_udc *udc, int fifo_irq, int opc_irq)
 	struct pxa27x_request	*req = NULL;
 	int			completed = 0;
 
-	if (!list_empty(&ep->queue))
-		req = list_entry(ep->queue.next, struct pxa27x_request, queue);
-
 	udccsr0 = udc_ep_readl(ep, UDCCSR);
 	ep_dbg(ep, "state=%s, req=%p, udccsr0=0x%03x, udcbcr=%d, irq_msk=%x\n",
 		EP0_STNAME(udc), req, udccsr0, udc_ep_readl(ep, UDCBCR),
 		(fifo_irq << 1 | opc_irq));
+	
+	if (!list_empty(&ep->queue))
+		req = list_entry(ep->queue.next, struct pxa27x_request, queue);
 
 	if (udccsr0 & UDCCSR0_SST) {
 		ep_dbg(ep, "clearing stall status\n");
 		nuke(ep, -EPIPE);
-		ep_write_UDCCSR(ep, UDCCSR0_SST);
+		udc_ep_writel(ep, UDCCSR, UDCCSR0_SST);
 		ep0_idle(udc);
 	}
 
@@ -2082,7 +1894,7 @@ static void handle_ep0(struct pxa_udc *udc, int fifo_irq, int opc_irq)
 		break;
 	case IN_DATA_STAGE:			/* GET_DESCRIPTOR */
 		if (epout_has_pkt(ep))
-			ep_write_UDCCSR(ep, UDCCSR0_OPC);
+			udc_ep_writel(ep, UDCCSR, UDCCSR0_OPC);
 		if (req && !ep_is_full(ep))
 			completed = write_ep0_fifo(ep, req);
 		if (completed)
@@ -2095,7 +1907,7 @@ static void handle_ep0(struct pxa_udc *udc, int fifo_irq, int opc_irq)
 			ep0_end_out_req(ep, req, NULL);
 		break;
 	case STALL:
-		ep_write_UDCCSR(ep, UDCCSR0_FST);
+		udc_ep_writel(ep, UDCCSR, UDCCSR0_FST);
 		break;
 	case IN_STATUS_STAGE:
 		/*
@@ -2204,7 +2016,6 @@ static void pxa27x_change_configuration(struct pxa_udc *udc, int config)
 
 	set_ep0state(udc, WAIT_ACK_SET_CONF_INTERF);
 	udc->driver->setup(&udc->gadget, &req);
-	ep_write_UDCCSR(&udc->pxa_ep[0], UDCCSR0_AREN);
 }
 
 /**
@@ -2233,7 +2044,6 @@ static void pxa27x_change_interface(struct pxa_udc *udc, int iface, int alt)
 
 	set_ep0state(udc, WAIT_ACK_SET_CONF_INTERF);
 	udc->driver->setup(&udc->gadget, &req);
-	ep_write_UDCCSR(&udc->pxa_ep[0], UDCCSR0_AREN);
 }
 
 /*
@@ -2362,7 +2172,7 @@ static void irq_udc_reset(struct pxa_udc *udc)
 	memset(&udc->stats, 0, sizeof udc->stats);
 
 	nuke(ep, -EPROTO);
-	ep_write_UDCCSR(ep, UDCCSR0_FTF | UDCCSR0_OPC);
+	udc_ep_writel(ep, UDCCSR, UDCCSR0_FTF | UDCCSR0_OPC);
 	ep0_idle(udc);
 }
 
@@ -2458,7 +2268,7 @@ static int __init pxa_udc_probe(struct platform_device *pdev)
 {
 	struct resource *regs;
 	struct pxa_udc *udc = &memory;
-	int retval = 0, gpio;
+	int retval;
 
 	regs = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!regs)
@@ -2469,20 +2279,6 @@ static int __init pxa_udc_probe(struct platform_device *pdev)
 
 	udc->dev = &pdev->dev;
 	udc->mach = pdev->dev.platform_data;
-	udc->transceiver = otg_get_transceiver();
-
-	gpio = udc->mach->gpio_pullup;
-	if (gpio_is_valid(gpio)) {
-		retval = gpio_request(gpio, "USB D+ pullup");
-		if (retval == 0)
-			gpio_direction_output(gpio,
-				       udc->mach->gpio_pullup_inverted);
-	}
-	if (retval) {
-		dev_err(&pdev->dev, "Couldn't request gpio %d : %d\n",
-			gpio, retval);
-		return retval;
-	}
 
 	udc->clk = clk_get(&pdev->dev, NULL);
 	if (IS_ERR(udc->clk)) {
@@ -2500,9 +2296,8 @@ static int __init pxa_udc_probe(struct platform_device *pdev)
 	device_initialize(&udc->gadget.dev);
 	udc->gadget.dev.parent = &pdev->dev;
 	udc->gadget.dev.dma_mask = NULL;
-	udc->vbus_sensed = 0;
 
-	the_controller = udc;
+	the_controller = udc;int gpio = udc->mach->gpio_pullup;
 	platform_set_drvdata(pdev, udc);
 	udc_init_data(udc);
 	pxa_eps_setup(udc);
@@ -2534,21 +2329,15 @@ err_clk:
 static int __exit pxa_udc_remove(struct platform_device *_dev)
 {
 	struct pxa_udc *udc = platform_get_drvdata(_dev);
-	int gpio = udc->mach->gpio_pullup;
 
 	usb_gadget_unregister_driver(udc->driver);
 	free_irq(udc->irq, udc);
 	pxa_cleanup_debugfs(udc);
-	if (gpio_is_valid(gpio))
-		gpio_free(gpio);
-
-	otg_put_transceiver(udc->transceiver);
 
 	udc->transceiver = NULL;
 	platform_set_drvdata(_dev, NULL);
 	the_controller = NULL;
 	clk_put(udc->clk);
-	iounmap(udc->regs);
 
 	return 0;
 }
@@ -2560,12 +2349,6 @@ static void pxa_udc_shutdown(struct platform_device *_dev)
 	if (udc_readl(udc, UDCCR) & UDCCR_UDE)
 		udc_disable(udc);
 }
-
-#ifdef CONFIG_PXA27x
-extern void pxa27x_clear_otgph(void);
-#else
-#define pxa27x_clear_otgph()   do {} while (0)
-#endif
 
 #ifdef CONFIG_PM
 /**
@@ -2593,8 +2376,6 @@ static int pxa_udc_suspend(struct platform_device *_dev, pm_message_t state)
 	}
 
 	udc_disable(udc);
-	udc->pullup_resume = udc->pullup_on;
-	dplus_pullup(udc, 0);
 
 	return 0;
 }
@@ -2622,9 +2403,7 @@ static int pxa_udc_resume(struct platform_device *_dev)
 				ep->udccsr_value, ep->udccr_value);
 	}
 
-	dplus_pullup(udc, udc->pullup_resume);
-	if (should_enable_udc(udc))
-		udc_enable(udc);
+	udc_enable(udc);
 	/*
 	 * We do not handle OTG yet.
 	 *
@@ -2634,7 +2413,8 @@ static int pxa_udc_resume(struct platform_device *_dev)
 	 * Software must configure the USB OTG pad, UDC, and UHC
 	 * to the state they were in before entering sleep mode.
 	 */
-	pxa27x_clear_otgph();
+	if (cpu_is_pxa27x())
+		PSSR |= PSSR_OTGPH;
 
 	return 0;
 }
@@ -2658,7 +2438,7 @@ static struct platform_driver udc_driver = {
 
 static int __init udc_init(void)
 {
-	if (!cpu_is_pxa27x() && !cpu_is_pxa3xx())
+	if (!cpu_is_pxa27x())
 		return -ENODEV;
 
 	printk(KERN_INFO "%s: version %s\n", driver_name, DRIVER_VERSION);

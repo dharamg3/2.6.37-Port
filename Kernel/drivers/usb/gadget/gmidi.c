@@ -192,7 +192,7 @@ module_param(qlen, uint, S_IRUGO);
 #define GMIDI_MS_INTERFACE	1
 #define GMIDI_NUM_INTERFACES	2
 
-DECLARE_UAC_AC_HEADER_DESCRIPTOR(1);
+DECLARE_USB_AC_HEADER_DESCRIPTOR(1);
 DECLARE_USB_MIDI_OUT_JACK_DESCRIPTOR(1);
 DECLARE_USB_MS_ENDPOINT_DESCRIPTOR(1);
 
@@ -200,10 +200,10 @@ DECLARE_USB_MS_ENDPOINT_DESCRIPTOR(1);
 static struct usb_device_descriptor device_desc = {
 	.bLength =		USB_DT_DEVICE_SIZE,
 	.bDescriptorType =	USB_DT_DEVICE,
-	.bcdUSB =		cpu_to_le16(0x0200),
+	.bcdUSB =		__constant_cpu_to_le16(0x0200),
 	.bDeviceClass =		USB_CLASS_PER_INTERFACE,
-	.idVendor =		cpu_to_le16(DRIVER_VENDOR_NUM),
-	.idProduct =		cpu_to_le16(DRIVER_PRODUCT_NUM),
+ 	.idVendor =		__constant_cpu_to_le16(DRIVER_VENDOR_NUM),
+ 	.idProduct =		__constant_cpu_to_le16(DRIVER_PRODUCT_NUM),
 	.iManufacturer =	STRING_MANUFACTURER,
 	.iProduct =		STRING_PRODUCT,
 	.bNumConfigurations =	1,
@@ -242,8 +242,8 @@ static const struct uac1_ac_header_descriptor_1 ac_header_desc = {
 	.bLength =		UAC_DT_AC_HEADER_SIZE(1),
 	.bDescriptorType =	USB_DT_CS_INTERFACE,
 	.bDescriptorSubtype =	USB_MS_HEADER,
-	.bcdADC =		cpu_to_le16(0x0100),
-	.wTotalLength =		cpu_to_le16(UAC_DT_AC_HEADER_SIZE(1)),
+	.bcdADC =		__constant_cpu_to_le16(0x0100),
+	.wTotalLength =		__constant_cpu_to_le16(USB_DT_AC_HEADER_SIZE(1)),
 	.bInCollection =	1,
 	.baInterfaceNr = {
 		[0] =		GMIDI_MS_INTERFACE,
@@ -266,8 +266,8 @@ static const struct usb_ms_header_descriptor ms_header_desc = {
 	.bLength =		USB_DT_MS_HEADER_SIZE,
 	.bDescriptorType =	USB_DT_CS_INTERFACE,
 	.bDescriptorSubtype =	USB_MS_HEADER,
-	.bcdMSC =		cpu_to_le16(0x0100),
-	.wTotalLength =		cpu_to_le16(USB_DT_MS_HEADER_SIZE
+	.bcdMSC =		__constant_cpu_to_le16(0x0100),
+	.wTotalLength =		__constant_cpu_to_le16(USB_DT_MS_HEADER_SIZE
 				+ 2*USB_DT_MIDI_IN_SIZE
 				+ 2*USB_DT_MIDI_OUT_SIZE(1)),
 };
@@ -1095,9 +1095,10 @@ static int gmidi_register_card(struct gmidi_device *dev)
 		.dev_free = gmidi_snd_free,
 	};
 
-	err = snd_card_create(index, id, THIS_MODULE, 0, &card);
-	if (err < 0) {
-		ERROR(dev, "snd_card_create failed\n");
+ 	card = snd_card_new(index, id, THIS_MODULE, 0);
+ 	if (!card) {
+ 		ERROR(dev, "snd_card_new failed\n");
+ 		err = -ENOMEM;
 		goto fail;
 	}
 	dev->card = card;
@@ -1222,7 +1223,7 @@ autoconf_fail:
 		 */
 		pr_warning("%s: controller '%s' not recognized\n",
 			shortname, gadget->name);
-		device_desc.bcdDevice = cpu_to_le16(0x9999);
+		device_desc.bcdDevice = __constant_cpu_to_le16(0x9999);
 	}
 
 
