@@ -193,6 +193,7 @@ struct mmc_host {
 #ifdef CONFIG_MMC_DEBUG
 	unsigned int		removed:1;	/* host is being removed */
 #endif
+	unsigned int		skip_pwrmgt:1; /* skip power on/off during suspend/resume */
 
 	/* Only used with MMC_CAP_DISABLE */
 	int			enabled;	/* host is enabled */
