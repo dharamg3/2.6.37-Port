@@ -30,6 +30,9 @@
 #include <sound/pcm_params.h>
 #include <sound/timer.h>
 
+unsigned int ring_buf_index = 0;
+unsigned int period_index = 0;
+
 /*
  * fill ring buffer with silence
  * runtime->silence_start: starting pointer to silence area
@@ -271,6 +274,7 @@ int snd_pcm_update_state(struct snd_pcm_substream *substream,
 			 struct snd_pcm_runtime *runtime)
 {
 	snd_pcm_uframes_t avail;
+	unsigned int stop_threshold;
 
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
 		avail = snd_pcm_playback_avail(runtime);
@@ -278,15 +282,17 @@ int snd_pcm_update_state(struct snd_pcm_substream *substream,
 		avail = snd_pcm_capture_avail(runtime);
 	if (avail > runtime->avail_max)
 		runtime->avail_max = avail;
-	if (runtime->status->state == SNDRV_PCM_STATE_DRAINING) {
-		if (avail >= runtime->buffer_size) {
+	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
+		stop_threshold = runtime->stop_threshold * CONFIG_ANDROID_BUF_NUM;
+	else
+		stop_threshold = runtime->stop_threshold;
+
+	if (avail >= stop_threshold) {
+		if (substream->runtime->status->state == SNDRV_PCM_STATE_DRAINING)			
 			snd_pcm_drain_done(substream);
-			return -EPIPE;
-		}
-	} else {
-		if (avail >= runtime->stop_threshold) {
+		else
 			xrun(substream);
-			return -EPIPE;
+		return -EPIPE;
 		}
 	}
 	if (runtime->twake) {
@@ -302,6 +308,7 @@ static int snd_pcm_update_hw_ptr0(struct snd_pcm_substream *substream,
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	snd_pcm_uframes_t pos;
+	snd_pcm_uframes_t buffer_size;
 	snd_pcm_uframes_t old_hw_ptr, new_hw_ptr, hw_base;
 	snd_pcm_sframes_t hdelta, delta;
 	unsigned long jdelta;
@@ -312,7 +319,12 @@ static int snd_pcm_update_hw_ptr0(struct snd_pcm_substream *substream,
 		xrun(substream);
 		return -EPIPE;
 	}
-	if (pos >= runtime->buffer_size) {
+	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
+		buffer_size = runtime->buffer_size * CONFIG_ANDROID_BUF_NUM;
+	else
+		buffer_size = runtime->buffer_size;
+
+	if (pos >= buffer_size) {
 		if (printk_ratelimit()) {
 			char name[16];
 			pcm_debug_name(substream, name, sizeof(name));
@@ -337,6 +349,9 @@ static int snd_pcm_update_hw_ptr0(struct snd_pcm_substream *substream,
 			/* check for double acknowledged interrupts */
 			hdelta = jiffies - runtime->hw_ptr_jiffies;
 			if (hdelta > runtime->hw_ptr_buffer_jiffies/2) {
+				if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
+				hw_base += runtime->buffer_size * CONFIG_ANDROID_BUF_NUM;
+			else
 				hw_base += runtime->buffer_size;
 				if (hw_base >= runtime->boundary)
 					hw_base = 0;
@@ -1586,8 +1601,12 @@ static int snd_pcm_lib_ioctl_reset(struct snd_pcm_substream *substream,
 	unsigned long flags;
 	snd_pcm_stream_lock_irqsave(substream, flags);
 	if (snd_pcm_running(substream) &&
-	    snd_pcm_update_hw_ptr(substream) >= 0)
-		runtime->status->hw_ptr %= runtime->buffer_size;
+            snd_pcm_update_hw_ptr(substream) >= 0) {
+		if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
+			runtime->status->hw_ptr %= runtime->buffer_size * CONFIG_ANDROID_BUF_NUM;
+		else
+			runtime->status->hw_ptr %= runtime->buffer_size;
+	}
 	else
 		runtime->status->hw_ptr = 0;
 	snd_pcm_stream_unlock_irqrestore(substream, flags);
@@ -1791,7 +1810,20 @@ static int snd_pcm_lib_write_transfer(struct snd_pcm_substream *substream,
 		if ((err = substream->ops->copy(substream, -1, hwoff, buf, frames)) < 0)
 			return err;
 	} else {
-		char *hwbuf = runtime->dma_area + frames_to_bytes(runtime, hwoff);
+		char *hwbuf = runtime->dma_area + frames_to_bytes(runtime, hwoff)
+					  + (ring_buf_index * frames_to_bytes(runtime, runtime->buffer_size));
+
+		if(frames == runtime->buffer_size)
+			ring_buf_index = (ring_buf_index + 1) % CONFIG_ANDROID_BUF_NUM;
+
+		else if(frames != runtime->buffer_size) {
+			period_index += frames;
+			if(period_index >= runtime->buffer_size) {
+				ring_buf_index = (ring_buf_index + 1) % CONFIG_ANDROID_BUF_NUM;
+				period_index -= runtime->buffer_size;
+			}
+		}
+
 		if (copy_from_user(hwbuf, buf, frames_to_bytes(runtime, frames)))
 			return -EFAULT;
 	}
@@ -1852,6 +1884,10 @@ static snd_pcm_sframes_t snd_pcm_lib_write1(struct snd_pcm_substream *substream,
 			if (err < 0)
 				goto _end_unlock;
 		}
+
+		if(avail > runtime->buffer_size)
+			avail = runtime->buffer_size;		
+	
 		frames = size > avail ? avail : size;
 		cont = runtime->buffer_size - runtime->control->appl_ptr % runtime->buffer_size;
 		if (frames > cont)

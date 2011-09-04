@@ -38,6 +38,8 @@ source "sound/soc/kirkwood/Kconfig"
 source "sound/soc/pxa/Kconfig"
 source "sound/soc/s3c24xx/Kconfig"
 source "sound/soc/s6000/Kconfig"
+# 091211 Apollo(s5p6442) Sound Config
+source "sound/soc/s5p/Kconfig"
 source "sound/soc/sh/Kconfig"
 source "sound/soc/txx9/Kconfig"
 
