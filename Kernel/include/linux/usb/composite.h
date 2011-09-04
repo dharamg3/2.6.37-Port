@@ -102,6 +102,7 @@ struct usb_function {
 	struct usb_descriptor_header	**hs_descriptors;
 
 	struct usb_configuration	*config;
+	int				hidden;
 
 	/* disabled is zero if the function is enabled */
 	int				disabled;
@@ -237,9 +238,8 @@ struct usb_configuration {
 	struct usb_function	*interface[MAX_CONFIG_INTERFACES];
 };
 
-int usb_add_config(struct usb_composite_dev *,
-		struct usb_configuration *,
-		int (*)(struct usb_configuration *));
+int usb_add_config(struct usb_composite_dev *, struct usb_configuration *);
+int usb_change_config(struct usb_composite_dev *, struct usb_configuration *);
 
 /**
  * struct usb_composite_driver - groups configurations into a gadget

@@ -73,6 +73,8 @@ int wake_lock_active(struct wake_lock *lock);
  */
 long has_wake_lock(int type);
 
+int has_audio_wake_lock(void);
+
 #else
 
 static inline void wake_lock_init(struct wake_lock *lock, int type,
