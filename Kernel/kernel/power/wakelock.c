@@ -71,7 +71,7 @@ int get_expired_time(struct wake_lock *lock, ktime_t *expire_time)
 		if (timeout > 0)
 			return 0;
 		kt = current_kernel_time();
-		tomono = __get_wall_to_monotonic();
+		tomono = wall_to_monotonic;
 	} while (read_seqretry(&xtime_lock, seq));
 	jiffies_to_timespec(-timeout, &delta);
 	set_normalized_timespec(&ts, kt.tv_sec + tomono.tv_sec - delta.tv_sec,
@@ -222,7 +222,7 @@ static void print_active_locks(int type)
 				pr_info("wake lock %s, expired\n", lock->name);
 		} else {
 			pr_info("active wake lock %s\n", lock->name);
-			if (!(debug_mask & DEBUG_EXPIRE))
+			if (!debug_mask & DEBUG_EXPIRE)
 				print_expired = false;
 		}
 	}
@@ -522,6 +522,48 @@ int wake_lock_active(struct wake_lock *lock)
 	return !!(lock->flags & WAKE_LOCK_ACTIVE);
 }
 EXPORT_SYMBOL(wake_lock_active);
+
+#ifdef CONFIG_CPU_IDLE
+static int has_wake_lock_internal(const char *name)
+{
+	int ret = 0;
+	unsigned long irqflags;
+	struct wake_lock *lock, *n;
+
+	spin_lock_irqsave(&list_lock, irqflags);
+	list_for_each_entry_safe(lock, n, &active_wake_locks[WAKE_LOCK_SUSPEND], link) {
+		if (lock->flags & WAKE_LOCK_AUTO_EXPIRE) {
+			long timeout = lock->expires - jiffies;
+			if (timeout > 0) {
+				if (strcmp(lock->name, name) == 0) {
+					ret = 1;
+					spin_unlock_irqrestore(&list_lock, irqflags);
+					return ret;
+				}
+			}
+		} else {
+			if (strcmp(lock->name, name) == 0) {
+				ret = 1;
+				spin_unlock_irqrestore(&list_lock, irqflags);
+				return ret;
+			}
+		}
+	}
+	spin_unlock_irqrestore(&list_lock, irqflags);
+	return ret;
+}
+
+int has_audio_wake_lock(void)
+{
+	if (has_wake_lock_internal("AudioOutLock") &&
+	    !has_wake_lock_internal("vbus_present") &&
+	    !has_wake_lock_internal("bt-rfkill")) {
+		return 1;
+	}
+	return 0;
+}
+EXPORT_SYMBOL(has_audio_wake_lock);
+#endif /* CONFIG_CPU_IDLE */
 
 static int wakelock_stats_open(struct inode *inode, struct file *file)
 {
