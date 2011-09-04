@@ -4,6 +4,7 @@
 
 config PHONET
 	tristate "Phonet protocols family"
+	default y
 	help
 	  The Phone Network protocol (PhoNet) is a packet-oriented
 	  communication protocol developed by Nokia for use with its modems.

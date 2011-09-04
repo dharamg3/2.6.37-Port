@@ -58,7 +58,7 @@ int sysctl_tcp_mtu_probing __read_mostly = 0;
 int sysctl_tcp_base_mss __read_mostly = 512;
 
 /* By default, RFC2861 behavior.  */
-int sysctl_tcp_slow_start_after_idle __read_mostly = 1;
+int sysctl_tcp_slow_start_after_idle __read_mostly = 0;
 
 int sysctl_tcp_cookie_size __read_mostly = 0; /* TCP_COOKIE_MAX */
 EXPORT_SYMBOL_GPL(sysctl_tcp_cookie_size);
@@ -225,18 +225,18 @@ void tcp_select_initial_window(int __space, __u32 mss,
 	}
 
 	/* Set initial window to value enough for senders, following RFC5681. */
-	if (mss > (1 << *rcv_wscale)) {
+/*	if (mss > (1 << *rcv_wscale)) {
 		int init_cwnd = rfc3390_bytes_to_packets(mss);
 
-		/* when initializing use the value from init_rcv_wnd
-		 * rather than the default from above
-		 */
+		// when initializing use the value from init_rcv_wnd
+		//  rather than the default from above
+		 
 		if (init_rcv_wnd)
 			*rcv_wnd = min(*rcv_wnd, init_rcv_wnd * mss);
 		else
 			*rcv_wnd = min(*rcv_wnd, init_cwnd * mss);
 	}
-
+*/
 	/* Set the clamp no higher than max representable value */
 	(*window_clamp) = min(65535U << (*rcv_wscale), *window_clamp);
 }
