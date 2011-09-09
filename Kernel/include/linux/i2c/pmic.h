@@ -35,7 +35,9 @@ typedef enum {
 	ENDOFPMTYPE
 } pmic_pm_type;
 
-extern boolean set_pmic(pmic_pm_type pm_type, int value);
-extern boolean get_pmic(pmic_pm_type pm_type, int *value);
+//extern boolean 
+set_pmic(pmic_pm_type pm_type, int value);
+//extern boolean 
+get_pmic(pmic_pm_type pm_type, int *value);
 
 #endif /* __LINUX_PMIC_H */
