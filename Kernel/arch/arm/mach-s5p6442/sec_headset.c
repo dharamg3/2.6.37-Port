@@ -28,6 +28,7 @@
 #include <linux/input.h>
 #include <linux/timer.h>
 #include <linux/wakelock.h>
+#include <linux/slab.h>
 
 #include <mach/hardware.h>
 #include <mach/apollo.h>
