@@ -156,8 +156,8 @@ static inline struct v4l2_subdev *v4l2_i2c_new_subdev(struct v4l2_device *v4l2_d
 struct i2c_board_info;
 
 struct v4l2_subdev *v4l2_i2c_new_subdev_board(struct v4l2_device *v4l2_dev,
-		struct i2c_adapter *adapter, struct i2c_board_info *info,
-		const unsigned short *probe_addrs);
+		struct i2c_adapter *adapter, const char *module_name,
+		struct i2c_board_info *info, const unsigned short *probe_addrs);
 
 /* Initialize an v4l2_subdev with data from an i2c_client struct */
 void v4l2_i2c_subdev_init(struct v4l2_subdev *sd, struct i2c_client *client,

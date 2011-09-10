@@ -1194,7 +1194,7 @@ static void sdhci_request(struct mmc_host *mmc, struct mmc_request *mrq)
 	host->mrq = mrq;
 
 	/* If polling, assume that the card is always present. */
-	if (host->quirks & SDHCI_QUIRK_BROKEN_CARD_DETECTION) ||
+	if ((host->quirks & SDHCI_QUIRK_BROKEN_CARD_DETECTION) ||
  	    (host->quirks & SDHCI_QUIRK_BROKEN_CARD_PRESENT_BIT))
 		present = true;
 	else
@@ -1788,7 +1788,7 @@ int sdhci_suspend_host(struct sdhci_host *host, pm_message_t state)
 
 	sdhci_disable_card_detection(host);
 
-	ret = mmc_suspend_host(host->mmc);
+	ret = mmc_suspend_host(host->mmc, state);
 	if (host->hwport == 2) /* T-Flash */
 		Set_MAX8998_PM_REG(ELDO5, 0);
  

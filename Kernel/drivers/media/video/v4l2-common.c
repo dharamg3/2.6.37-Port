@@ -368,8 +368,8 @@ EXPORT_SYMBOL_GPL(v4l2_i2c_subdev_init);
 
 /* Load an i2c sub-device. */
 struct v4l2_subdev *v4l2_i2c_new_subdev_board(struct v4l2_device *v4l2_dev,
-		struct i2c_adapter *adapter, struct i2c_board_info *info,
-		const unsigned short *probe_addrs)
+		struct i2c_adapter *adapter, const char *module_name,
+		struct i2c_board_info *info, const unsigned short *probe_addrs)
 {
 	struct v4l2_subdev *sd = NULL;
 	struct i2c_client *client;
@@ -434,7 +434,7 @@ struct v4l2_subdev *v4l2_i2c_new_subdev_cfg(struct v4l2_device *v4l2_dev,
 		u8 addr, const unsigned short *probe_addrs)
 {
 	struct i2c_board_info info;
-
+	char *module_name;
 	/* Setup the i2c board info with the device type and
 	   the device address. */
 	memset(&info, 0, sizeof(info));
@@ -443,7 +443,7 @@ struct v4l2_subdev *v4l2_i2c_new_subdev_cfg(struct v4l2_device *v4l2_dev,
 	info.irq = irq;
 	info.platform_data = platform_data;
 
-	return v4l2_i2c_new_subdev_board(v4l2_dev, adapter, &info, probe_addrs);
+	return v4l2_i2c_new_subdev_board(v4l2_dev, adapter, module_name, &info, probe_addrs);
 }
 EXPORT_SYMBOL_GPL(v4l2_i2c_new_subdev_cfg);
 

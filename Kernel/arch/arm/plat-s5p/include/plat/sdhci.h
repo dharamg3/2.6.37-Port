@@ -20,19 +20,32 @@ struct mmc_host;
 struct mmc_card;
 struct mmc_ios;
 
+enum cd_types {
+	S3C_SDHCI_CD_INTERNAL,	/* use mmc internal CD line */
+	S3C_SDHCI_CD_EXTERNAL,	/* use external callback */
+	S3C_SDHCI_CD_GPIO,	/* use external gpio pin for CD line */
+	S3C_SDHCI_CD_NONE,	/* no CD line, use polling to detect card */
+	S3C_SDHCI_CD_PERMANENT,	/* no CD line, card permanently wired to host */
+};
+
+enum clk_types {
+	S3C_SDHCI_CLK_DIV_INTERNAL,	/* use mmc internal clock divider */
+	S3C_SDHCI_CLK_DIV_EXTERNAL,	/* use external clock divider */
+};
+
 #define MAX_BUS_CLK	(3)
 
-struct sdhci_s3c {
+/*struct sdhci_s3c {
 	struct sdhci_host	*host;
 	struct platform_device	*pdev;
 	struct resource		*ioarea;
 	struct s3c_sdhci_platdata *pdata;
 	unsigned int		cur_clk;
 
-	struct clk		*clk_io;	/* clock for io bus */
+	struct clk		*clk_io;	// clock for io bus 
 	struct clk		*clk_bus[MAX_BUS_CLK];
 };
-
+*/
 /**
  * struct s3c_sdhci_platdata() - Platform device data for Samsung SDHCI
  * @max_width: The maximum number of data bits supported.
@@ -50,17 +63,24 @@ struct sdhci_s3c {
 struct s3c_sdhci_platdata {
 	unsigned int	max_width;
 	unsigned int	host_caps;
+	enum cd_types	cd_type;
+	enum clk_types	clk_type;
 
 	char		**clocks;	/* set of clock sources */
+
+	int		ext_cd_gpio;
+	bool		ext_cd_gpio_invert;
+	int	(*ext_cd_init)(void (*notify_func)(struct platform_device *,
+						   int state));
+	int	(*ext_cd_cleanup)(void (*notify_func)(struct platform_device *,
+						      int state));
 
 	void	(*cfg_gpio)(struct platform_device *dev, int width);
 	void	(*cfg_card)(struct platform_device *dev,
 			    void __iomem *regbase,
 			    struct mmc_ios *ios,
 			    struct mmc_card *card);
-
 	struct sdhci_host*	sdhci_host;
-
 };
 
 extern void sdhci_s3c_force_presence_change(struct platform_device *pdev);

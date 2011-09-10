@@ -263,6 +263,10 @@ struct v4l2_subdev_video_ops {
 	int (*s_parm)(struct v4l2_subdev *sd, struct v4l2_streamparm *param);
 	int (*enum_framesizes)(struct v4l2_subdev *sd, struct v4l2_frmsizeenum *fsize);
 	int (*enum_frameintervals)(struct v4l2_subdev *sd, struct v4l2_frmivalenum *fival);
+	int (*s_fmt)(struct v4l2_subdev *sd, struct v4l2_format *fmt);
+	int (*g_fmt)(struct v4l2_subdev *sd, struct v4l2_format *fmt);
+	int (*enum_fmt)(struct v4l2_subdev *sd, struct v4l2_fmtdesc *fmtdesc);
+	int (*try_fmt)(struct v4l2_subdev *sd, struct v4l2_format *fmt);
 	int (*enum_dv_presets) (struct v4l2_subdev *sd,
 			struct v4l2_dv_enum_preset *preset);
 	int (*s_dv_preset)(struct v4l2_subdev *sd,

@@ -11,9 +11,8 @@
 #include <linux/workqueue.h>
 #include <linux/kobject.h>
 #include <linux/kmemleak.h>
-
 #include <trace/events/kmem.h>
-
+#define ZERO_SIZE_PTR ((void *)16)
 enum stat_item {
 	ALLOC_FASTPATH,		/* Allocation from cpu slab */
 	ALLOC_SLOWPATH,		/* Allocation by getting a new cpu slab */

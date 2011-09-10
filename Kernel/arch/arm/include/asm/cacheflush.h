@@ -223,7 +223,8 @@ struct cpu_cache_fns {
 
 	void (*dma_map_area)(const void *, size_t, int);
 	void (*dma_unmap_area)(const void *, size_t, int);
-
+	void (*dma_inv_range)(const void *, const void *);
+	void (*dma_clean_range)(const void *, const void *);
 	void (*dma_flush_range)(const void *, const void *);
 };
 
@@ -250,6 +251,8 @@ extern struct cpu_cache_fns cpu_cache;
  */
 #define dmac_map_area			cpu_cache.dma_map_area
 #define dmac_unmap_area		cpu_cache.dma_unmap_area
+#define dmac_inv_range			cpu_cache.dma_inv_range
+#define dmac_clean_range		cpu_cache.dma_clean_range
 #define dmac_flush_range		cpu_cache.dma_flush_range
 
 #else

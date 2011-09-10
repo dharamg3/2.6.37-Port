@@ -42,6 +42,8 @@
 #include <asm/uaccess.h>
 #include <linux/miscdevice.h>
 #include <linux/mman.h>
+#include <linux/slub_def.h>
+#include <linux/slab.h>
 
 #include <linux/unistd.h>
 

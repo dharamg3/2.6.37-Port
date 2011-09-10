@@ -17,6 +17,8 @@
 #include <linux/io.h>
 #include <linux/mmc/host.h>
 
+#define SUPPORT_CLK_GATING 1
+
 struct sdhci_host {
 	/* Data set by hardware interface driver */
 	const char *hw_name;	/* Hardware bus name */
@@ -83,11 +85,15 @@ struct sdhci_host {
 #define SDHCI_QUIRK_MULTIBLOCK_READ_ACMD12		(1<<28)
 /* Controller doesn't have HISPD bit field in HI-SPEED SD card */
 #define SDHCI_QUIRK_NO_HISPD_BIT			(1<<29)
+/* Controller has unreliable card present bit */
+#define SDHCI_QUIRK_BROKEN_CARD_PRESENT_BIT		(1<<30)
 
 	int irq;		/* Device IRQ */
 	void __iomem *ioaddr;	/* Mapped address */
 
 	const struct sdhci_ops *ops;	/* Low level hw interface */
+	
+	int			irq_cd;		/* SD Card Detection IRQ */
 
 	struct regulator *vmmc;	/* Power regulator */
 
@@ -113,6 +119,8 @@ struct sdhci_host {
 	unsigned int max_clk;	/* Max possible freq (MHz) */
 	unsigned int timeout_clk;	/* Timeout freq (KHz) */
 
+	unsigned int 		hwport;
+
 	unsigned int clock;	/* Current clock (MHz) */
 	u8 pwr;			/* Current voltage */
 
@@ -136,6 +144,10 @@ struct sdhci_host {
 	struct tasklet_struct finish_tasklet;
 
 	struct timer_list timer;	/* Timer for timeouts */
+
+	#if SUPPORT_CLK_GATING
+	struct timer_list	busy_check_timer;
+	#endif
 
 	unsigned int caps;	/* Alternative capabilities */
 
