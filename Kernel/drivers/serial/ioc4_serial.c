@@ -22,7 +22,6 @@
 #include <linux/pci.h>
 #include <linux/ioc4.h>
 #include <linux/serial_core.h>
-#include <linux/slab.h>
 
 /*
  * interesting things about the ioc4
@@ -1685,12 +1684,11 @@ ioc4_change_speed(struct uart_port *the_port,
 {
 	struct ioc4_port *port = get_ioc4_port(the_port, 0);
 	int baud, bits;
-	unsigned cflag, iflag;
+	unsigned cflag;
 	int new_parity = 0, new_parity_enable = 0, new_stop = 0, new_data = 8;
 	struct uart_state *state = the_port->state;
 
 	cflag = new_termios->c_cflag;
-	iflag = new_termios->c_iflag;
 
 	switch (cflag & CSIZE) {
 	case CS5:
@@ -1742,12 +1740,12 @@ ioc4_change_speed(struct uart_port *the_port,
 
 	state->port.tty->low_latency = 1;
 
-	if (iflag & IGNPAR)
+	if (I_IGNPAR(state->port.tty))
 		the_port->ignore_status_mask &= ~(N_PARITY_ERROR
 						| N_FRAMING_ERROR);
-	if (iflag & IGNBRK) {
+	if (I_IGNBRK(state->port.tty)) {
 		the_port->ignore_status_mask &= ~N_BREAK;
-		if (iflag & IGNPAR)
+		if (I_IGNPAR(state->port.tty))
 			the_port->ignore_status_mask &= ~N_OVERRUN_ERROR;
 	}
 	if (!(cflag & CREAD)) {
@@ -2906,7 +2904,7 @@ static struct ioc4_submodule ioc4_serial_submodule = {
 /**
  * ioc4_serial_init - module init
  */
-static int __init ioc4_serial_init(void)
+int ioc4_serial_init(void)
 {
 	int ret;
 
@@ -2915,30 +2913,20 @@ static int __init ioc4_serial_init(void)
 		printk(KERN_WARNING
 			"%s: Couldn't register rs232 IOC4 serial driver\n",
 			__func__);
-		goto out;
+		return ret;
 	}
 	if ((ret = uart_register_driver(&ioc4_uart_rs422)) < 0) {
 		printk(KERN_WARNING
 			"%s: Couldn't register rs422 IOC4 serial driver\n",
 			__func__);
-		goto out_uart_rs232;
+		return ret;
 	}
 
 	/* register with IOC4 main module */
-	ret = ioc4_register_submodule(&ioc4_serial_submodule);
-	if (ret)
-		goto out_uart_rs422;
-	return 0;
-
-out_uart_rs422:
-	uart_unregister_driver(&ioc4_uart_rs422);
-out_uart_rs232:
-	uart_unregister_driver(&ioc4_uart_rs232);
-out:
-	return ret;
+	return ioc4_register_submodule(&ioc4_serial_submodule);
 }
 
-static void __exit ioc4_serial_exit(void)
+static void __devexit ioc4_serial_exit(void)
 {
 	ioc4_unregister_submodule(&ioc4_serial_submodule);
 	uart_unregister_driver(&ioc4_uart_rs232);

@@ -956,10 +956,6 @@ source "arch/arm/mach-s3c2440/Kconfig"
 source "arch/arm/mach-s3c2443/Kconfig"
 endif
 
-if ARCH_S3C64XX
-source "arch/arm/mach-s3c64xx/Kconfig"
-endif
-
 if ARCH_S5P64XX
 source "arch/arm/mach-s5p6442/Kconfig"
 endif

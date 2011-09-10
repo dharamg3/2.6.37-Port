@@ -2,7 +2,7 @@
  *
  * Driver core for Samsung SoC onboard UARTs.
  *
- * Ben Dooks, Copyright (c) 2003-2008 Simtec Electronics
+ * Ben Dooks, Copyright (c) 2003-2005,2008 Simtec Electronics
  *	http://armlinux.simtec.co.uk/
  *
  * This program is free software; you can redistribute it and/or modify
@@ -54,6 +54,7 @@
 #include "samsung.h"
 
 #define HIGH_SPEED_UART
+
 /* UART name and device definitions */
 
 #define S3C24XX_SERIAL_NAME	"ttySAC"
@@ -67,9 +68,10 @@
 
 /* flag to ignore all characters comming in */
 #define RXSTAT_DUMMY_READ (0x10000000)
+
 const unsigned int nSlotTable[16] = {0x0000, 0x0080, 0x0808, 0x0888, 0x2222, 0x4924, 0x4a52, 0x54aa,
-                                                 0x5555, 0xd555, 0xd5d5, 0xddd5, 0xdddd, 0xdfdd, 0xdfdf, 0xffdf};
- 
+                                                0x5555, 0xd555, 0xd5d5, 0xddd5, 0xdddd, 0xdfdd, 0xdfdf, 0xffdf};
+
 static inline struct s3c24xx_uart_port *to_ourport(struct uart_port *port)
 {
 	return container_of(port, struct s3c24xx_uart_port, port);
@@ -144,7 +146,6 @@ static void s3c24xx_serial_start_tx(struct uart_port *port)
 	if (!tx_enabled(port)) {
 		if (port->flags & UPF_CONS_FLOW)
 			s3c24xx_serial_rx_disable(port);
-
 		enable_irq(ourport->tx_irq);
 		tx_enabled(port) = 1;
 	}
@@ -391,11 +392,11 @@ static void s3c24xx_serial_shutdown(struct uart_port *port)
 		ourport->rx_claimed = 0;
 		rx_enabled(port) = 0;
 	}
-       if(ourport->tx_claimed && ourport->rx_claimed) {
-                printk("calling shutdown from startup \n");
-                s3c24xx_serial_shutdown(port);
-        }
- 
+      if(ourport->tx_claimed && ourport->rx_claimed) {
+               printk("calling shutdown from startup \n");
+               s3c24xx_serial_shutdown(port);
+       }
+
 }
 
 
@@ -454,12 +455,12 @@ static void s3c24xx_serial_pm(struct uart_port *port, unsigned int level,
 
 	ourport->pm_level = level;
 
- 	/* FIXME - Clock gates of sclk and pclk are not separated on s5p6442.
- 	   So we only need to control ip3 gate when we want to disable the clock related to UART.
- 	   It's not ourport->baudclk but ourport->clk which control ip3 gate.
- 	   Because ourport->baudclk has clk_null_enable fuction if source clock is pclk.
- 	   However getting ourport->clk failed on probe. For this reason, we cannot disable the clock.
- 	   If it affects power consumption in sleep mode, the problem should be solved. */ 
+	/* FIXME - Clock gates of sclk and pclk are not separated on s5p6442.
+	   So we only need to control ip3 gate when we want to disable the clock related to UART.
+	   It's not ourport->baudclk but ourport->clk which control ip3 gate.
+	   Because ourport->baudclk has clk_null_enable fuction if source clock is pclk.
+	   However getting ourport->clk failed on probe. For this reason, we cannot disable the clock.
+	   If it affects power consumption in sleep mode, the problem should be solved. */
 
 	switch (level) {
 	case 3:
@@ -505,14 +506,14 @@ static struct s3c24xx_uart_clksrc tmp_clksrc = {
 };
 
 #ifdef HIGH_SPEED_UART
- static struct s3c24xx_uart_clksrc tmp_hs_clksrc = {
- 	.name		= "sclk_uart",
- 	.min_baud	= 0,
- 	.max_baud	= 0,
- 	.divisor	= 1,
+static struct s3c24xx_uart_clksrc tmp_hs_clksrc = {
+	.name		= "sclk_uart",
+	.min_baud	= 0,
+	.max_baud	= 0,
+	.divisor	= 1,
 };
 #endif
- 
+
 static inline int
 s3c24xx_serial_getsource(struct uart_port *port, struct s3c24xx_uart_clksrc *c)
 {
@@ -533,7 +534,7 @@ struct baud_calc {
 	struct s3c24xx_uart_clksrc	*clksrc;
 	unsigned int			 calc;
 	unsigned int			 quot;
-	unsigned int                     slot;
+        unsigned int                     slot;
 	struct clk			*src;
 };
 
@@ -542,39 +543,42 @@ static int s3c24xx_serial_calcbaud(struct baud_calc *calc,
 				   struct s3c24xx_uart_clksrc *clksrc,
 				   unsigned int baud)
 {
- 	unsigned long rate,nslot;
- 	unsigned long tempdiv;
- 	unsigned int serial_result_1,serial_result_2;
+	unsigned long rate,nslot;
+	unsigned long tempdiv;
+	unsigned int serial_result_1,serial_result_2;
 
 	calc->src = clk_get(port->dev, clksrc->name);
 	if (calc->src == NULL || IS_ERR(calc->src))
 		return 0;
+
+	baud/=100;
 
 	rate = clk_get_rate(calc->src);
 	rate /= clksrc->divisor;
 
 	calc->clksrc = clksrc;
 
- 	tempdiv = (rate*10/(baud*16))-1000;
- 	serial_result_1 = ((tempdiv%1000)*16)/1000;
- 	serial_result_2 = (((tempdiv%1000)*16) - (serial_result_1*1000));
- 
- 	nslot = serial_result_1;
- 
- 	calc->quot = tempdiv/1000;
- 	if (calc->quot == 0) {
- 		printk(KERN_ERR "uart: UBRDIV is zero, baudrate isn't affected by UDIVSOLT\n");
- 		return 0;
+	tempdiv = (rate*10/(baud*16))-1000;
+	serial_result_1 = ((tempdiv%1000)*16)/1000;
+	serial_result_2 = (((tempdiv%1000)*16) - (serial_result_1*1000));
+
+	nslot = serial_result_1;
+
+	calc->quot = tempdiv/1000;
+	if (calc->quot == 0) {
+		printk(KERN_ERR "uart: UBRDIV is zero, baudrate isn't affected by UDIVSOLT\n");
+		return 0;
 	}
 	calc->calc = (rate / (calc->quot * 16));
- 	calc->slot = nSlotTable[nslot];
+	calc->slot = nSlotTable[nslot];
+
 	return 1;
 }
 
 static unsigned int s3c24xx_serial_getclk(struct uart_port *port,
 					  struct s3c24xx_uart_clksrc **clksrc,
 					  struct clk **clk,
-					  unsigned int baud, unsigned int *slot)
+                                          unsigned int baud, unsigned int *slot)
 {
 	struct s3c2410_uartcfg *cfg = s3c24xx_port_to_cfg(port);
 	struct s3c24xx_uart_clksrc *clkp;
@@ -587,16 +591,16 @@ static unsigned int s3c24xx_serial_getclk(struct uart_port *port,
 	best = NULL;
 
 	if (cfg->clocks_size < 2) {
- #ifdef HIGH_SPEED_UART
- 		if (cfg->clocks_size == 0) {
- 			if (cfg->hwport == 0)	/* Bluetooth UART Port */
- 			{
- 				clkp = &tmp_hs_clksrc;			
- 				printk("@@@@@@@@@@@@@@ BT HIGHSPEED CLOCK @@@@@@@@@@@@@@\n");
- 			}
- 			else
- 				clkp = &tmp_clksrc;			
- 		}
+#ifdef HIGH_SPEED_UART
+		if (cfg->clocks_size == 0) {
+			if (cfg->hwport == 0)	/* Bluetooth UART Port */
+			{
+				clkp = &tmp_hs_clksrc;			
+				printk("@@@@@@@@@@@@@@ BT HIGHSPEED CLOCK @@@@@@@@@@@@@@\n");
+			}
+			else
+				clkp = &tmp_clksrc;			
+		}
 #else
 		if (cfg->clocks_size == 0)
 			clkp = &tmp_clksrc;
@@ -651,18 +655,18 @@ static unsigned int s3c24xx_serial_getclk(struct uart_port *port,
 			}
 		}
 	}
+
 	if(best) {
 	/* store results to pass back */
 
 	*clksrc = best->clksrc;
 	*clk    = best->src;
-	*slot   = best->slot;
+	        *slot   = best->slot;
 
 	return best->quot;
 	} else {
-	return -EINVAL;
- 	}
-
+		return -EINVAL;
+	}
 }
 
 static void s3c24xx_serial_set_termios(struct uart_port *port,
@@ -678,7 +682,6 @@ static void s3c24xx_serial_set_termios(struct uart_port *port,
 	unsigned int ulcon;
 	unsigned int umcon;
 	unsigned int slot = 0;
-
 	/*
 	 * We don't support modem control lines.
 	 */
@@ -686,7 +689,7 @@ static void s3c24xx_serial_set_termios(struct uart_port *port,
 	termios->c_cflag |= CLOCAL;
 	if (port->line == 0)		/* BT UART port */
 		termios->c_cflag |= CRTSCTS;
-
+	
 	/*
 	 * Ask the core to calculate the divisor for us.
 	 */
@@ -701,7 +704,6 @@ static void s3c24xx_serial_set_termios(struct uart_port *port,
 	/* check to see if we need  to change clock source */
 
 	if (ourport->clksrc != clksrc || ourport->baudclk != clk) {
-		dbg("selecting clock %p\n", clk);
 		s3c24xx_serial_setsource(port, clksrc);
 
 		if (ourport->baudclk != NULL && !IS_ERR(ourport->baudclk)) {
@@ -1100,7 +1102,7 @@ static int s3c24xx_serial_init_port(struct s3c24xx_uart_port *ourport,
 	dbg("resource %p (%lx..%lx)\n", res, res->start, res->end);
 
 	port->mapbase = res->start;
-	port->membase = S3C_VA_UART + (res->start & 0xfffff);
+	port->membase = S3C_VA_UART + res->start - (S3C_PA_UART & 0xfff00000);
 	ret = platform_get_irq(platdev, 0);
 	if (ret < 0)
 		port->irq = 0;
@@ -1115,11 +1117,11 @@ static int s3c24xx_serial_init_port(struct s3c24xx_uart_port *ourport,
 		ourport->tx_irq = ret;
 
 	ourport->clk	= clk_get(&platdev->dev, "uart");
- 	if (IS_ERR(ourport->clk)) {
- 		dev_err(&platdev->dev, "failed to find uart clock source\n");
- 		return PTR_ERR(ourport->clk);
- 	}
- 	clk_enable(ourport->clk);
+	if (IS_ERR(ourport->clk)) {
+		dev_err(&platdev->dev, "failed to find uart clock source\n");
+		return PTR_ERR(ourport->clk);
+	}
+	clk_enable(ourport->clk);
 
 	dbg("port: map=%08x, mem=%08x, irq=%d (%d,%d), clock=%ld\n",
 	    port->mapbase, port->membase, port->irq,
@@ -1281,7 +1283,7 @@ s3c24xx_serial_console_txrdy(struct uart_port *port, unsigned int ufcon)
 	unsigned long ufstat, utrstat;
 
 	if (ufcon & S3C2410_UFCON_FIFOMODE) {
-		/* fifo mode - check amount of data in fifo registers... */
+		/* fifo mode - check ammount of data in fifo registers... */
 
 		ufstat = rd_regl(port, S3C2410_UFSTAT);
 		return (ufstat & info->tx_fifofull) ? 0 : 1;
@@ -1384,7 +1386,7 @@ s3c24xx_serial_get_options(struct uart_port *port, int *baud,
  * data.
 */
 
-static int s3c24xx_serial_init_ports(struct s3c24xx_uart_info **info)
+static int s3c24xx_serial_init_ports(struct s3c24xx_uart_info *info)
 {
 	struct s3c24xx_uart_port *ptr = s3c24xx_serial_ports;
 	struct platform_device **platdev_ptr;
@@ -1395,7 +1397,7 @@ static int s3c24xx_serial_init_ports(struct s3c24xx_uart_info **info)
 	platdev_ptr = s3c24xx_uart_devs;
 
 	for (i = 0; i < CONFIG_SERIAL_SAMSUNG_UARTS; i++, ptr++, platdev_ptr++) {
-		s3c24xx_serial_init_port(ptr, info[i], *platdev_ptr);
+		s3c24xx_serial_init_port(ptr, info, *platdev_ptr);
 	}
 
 	return 0;
@@ -1461,7 +1463,7 @@ static struct console s3c24xx_serial_console = {
 };
 
 int s3c24xx_serial_initconsole(struct platform_driver *drv,
-			       struct s3c24xx_uart_info **info)
+			       struct s3c24xx_uart_info *info)
 
 {
 	struct platform_device *dev = s3c24xx_uart_devs[0];
