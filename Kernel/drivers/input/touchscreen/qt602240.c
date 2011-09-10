@@ -23,6 +23,7 @@
 #include <mach/hardware.h>
 #include <linux/i2c/max8998.h>
 #include <linux/jiffies.h>
+#include <linux/slab.h>
 
 #ifdef CONFIG_CPU_FREQ
 #include <plat/s5p6442-dvfs.h>
