@@ -96,8 +96,7 @@ struct snd_soc_dai;
 struct snd_ac97_bus_ops;
 
 /* Digital Audio Interface registration */
-int snd_soc_register_dai(struct device *dev,
-		struct snd_soc_dai_driver *dai_drv);
+int snd_soc_register_dai(struct snd_soc_dai *dai);
 void snd_soc_unregister_dai(struct device *dev);
 int snd_soc_register_dais(struct device *dev,
 		struct snd_soc_dai_driver *dai_drv, size_t count);
@@ -227,6 +226,16 @@ struct snd_soc_dai {
 	/* driver ops */
 	struct snd_soc_dai_driver *driver;
 
+	/* ops */
+	struct snd_soc_dai_ops *ops;
+	/* DAI callbacks */
+	int (*probe)(struct platform_device *pdev,
+		     struct snd_soc_dai *dai);
+	void (*remove)(struct platform_device *pdev,
+		       struct snd_soc_dai *dai);
+	int (*suspend)(struct snd_soc_dai *dai);
+	int (*resume)(struct snd_soc_dai *dai);
+
 	/* DAI runtime info */
 	unsigned int capture_active:1;		/* stream is in use */
 	unsigned int playback_active:1;		/* stream is in use */
@@ -235,10 +244,12 @@ struct snd_soc_dai {
 	unsigned int active;
 	unsigned char pop_wait:1;
 	unsigned char probed:1;
-
+	void *dma_data;
 	/* DAI DMA data */
 	void *playback_dma_data;
 	void *capture_dma_data;
+	struct snd_soc_pcm_stream capture;
+	struct snd_soc_pcm_stream playback;
 
 	/* parent platform/codec */
 	union {

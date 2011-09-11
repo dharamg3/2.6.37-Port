@@ -36,7 +36,8 @@
 #include <linux/clk.h>
 #include <linux/uaccess.h>
 #include <linux/io.h>
-
+#include <linux/slab.h>
+#include <linux/slub_def.h>
 #include <mach/map.h>
 
 #undef S3C_VA_WATCHDOG

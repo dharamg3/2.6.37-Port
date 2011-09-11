@@ -37,6 +37,8 @@
 #include <linux/poll.h>
 #include <linux/sched.h>
 #include <mach/map.h>
+#include <linux/slab.h>
+#include <linux/slub_def.h>
 
 #define DRVNAME "onedram"
 

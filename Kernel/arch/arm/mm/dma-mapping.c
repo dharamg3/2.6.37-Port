@@ -452,6 +452,41 @@ void ___dma_single_dev_to_cpu(const void *kaddr, size_t size,
 }
 EXPORT_SYMBOL(___dma_single_dev_to_cpu);
 
+/*
+ * Make an area consistent for devices.
+ * Note: Drivers should NOT use this function directly, as it will break
+ * platforms with CONFIG_DMABOUNCE.
+ * Use the driver DMA support - see dma-mapping.h (dma_sync_*)
+*/
+void dma_cache_maint(const void *start, size_t size, int direction)
+{
+       void (*inner_op)(const void *, const void *);
+       void (*outer_op)(unsigned long, unsigned long);
+
+       BUG_ON(!virt_addr_valid(start) || !virt_addr_valid(start + size - 1));
+
+       switch (direction) {
+       case DMA_FROM_DEVICE:           /* invalidate only */
+               inner_op = dmac_inv_range;
+               outer_op = outer_inv_range;
+               break;
+       case DMA_TO_DEVICE:             /* writeback only */
+               inner_op = dmac_clean_range;
+               outer_op = outer_clean_range;
+               break;
+       case DMA_BIDIRECTIONAL:         /* writeback and invalidate */
+               inner_op = dmac_flush_range;
+               outer_op = outer_flush_range;
+               break;
+       default:
+               BUG();
+       }
+
+       inner_op(start, start + size);
+       outer_op(__pa(start), __pa(start) + size);
+}
+EXPORT_SYMBOL(dma_cache_maint);
+
 static void dma_cache_maint_page(struct page *page, unsigned long offset,
 	size_t size, enum dma_data_direction dir,
 	void (*op)(const void *, size_t, int))

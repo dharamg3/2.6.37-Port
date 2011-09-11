@@ -34,7 +34,7 @@
 /**
  * list to keep track of each created block devices
  */
-static DECLARE_MUTEX(bml_list_mutex);
+static DEFINE_SEMAPHORE(bml_list_mutex);
 static LIST_HEAD(bml_list);
 
 #ifdef CONFIG_PM
@@ -76,7 +76,7 @@ static int bml_transfer(u32 volume, u32 partno, const struct request *req)
 	
 	DEBUG(DL3,"TINY[I]: volume(%d), partno(%d)\n", volume, partno);
 
-	if (!blk_fs_request(req))
+	if (req->cmd_type != REQ_TYPE_FS)
 	{
 		return 0;
 	}

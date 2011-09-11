@@ -19,7 +19,6 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-#include <linux/slab.h>
 #include <linux/kernel.h>
 #include <linux/device.h>
 #include <linux/etherdevice.h>
@@ -145,9 +144,9 @@ static struct usb_cdc_ether_desc ether_desc __initdata = {
 
 	/* this descriptor actually adds value, surprise! */
 	/* .iMACAddress = DYNAMIC */
- 	.bmEthernetStatistics =	__constant_cpu_to_le32(0), /* no statistics */
- 	.wMaxSegmentSize =	__constant_cpu_to_le16(ETH_FRAME_LEN),
- 	.wNumberMCFilters =	__constant_cpu_to_le16(0),
+	.bmEthernetStatistics =	__constant_cpu_to_le32(0), /* no statistics */
+	.wMaxSegmentSize =	__constant_cpu_to_le16(ETH_FRAME_LEN),
+	.wNumberMCFilters =	__constant_cpu_to_le16(0),
 	.bNumberPowerFilters =	0,
 };
 
@@ -209,11 +208,11 @@ static struct usb_descriptor_header *hs_eth_function[] __initdata = {
 	NULL,
 };
 
- /* used when geth function is disabled */
- static struct usb_descriptor_header *null_geth_descs[] = {
- 	NULL,
- };
- 
+/* used when geth function is disabled */
+static struct usb_descriptor_header *null_geth_descs[] = {
+	NULL,
+};
+
 
 /* string descriptors: */
 
@@ -431,22 +430,23 @@ int __init geth_bind_config(struct usb_configuration *c, u8 ethaddr[ETH_ALEN])
 	return status;
 }
 
- void geth_function_enable(int enable)
- {
- 	struct f_gether	*geth = the_geth;
- 
- 	if (geth) {
- 		printk("[%s] geth_function_enable => (%s)\n", __func__, 
- 			enable ? "enabled" : "disabled");
- 
- 		if (enable) {
- 			geth->port.func.descriptors = fs_eth_function;
- 			geth->port.func.hs_descriptors = hs_eth_function;
- 		} else {
- 			geth->port.func.descriptors = null_geth_descs;
- 			geth->port.func.hs_descriptors = null_geth_descs;
- 		}
- 	}
- 	else
- 		printk("[%s] dev does not exist\n", __func__);
- } 
+void geth_function_enable(int enable)
+{
+	struct f_gether	*geth = the_geth;
+
+	if (geth) {
+		printk("[%s] geth_function_enable => (%s)\n", __func__, 
+			enable ? "enabled" : "disabled");
+
+		if (enable) {
+			geth->port.func.descriptors = fs_eth_function;
+			geth->port.func.hs_descriptors = hs_eth_function;
+		} else {
+			geth->port.func.descriptors = null_geth_descs;
+			geth->port.func.hs_descriptors = null_geth_descs;
+		}
+	}
+	else
+		printk("[%s] dev does not exist\n", __func__);
+}
+

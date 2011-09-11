@@ -143,7 +143,9 @@ int vfs_fsync_range(struct file *file, loff_t start, loff_t end, int datasync)
 {
 	struct address_space *mapping = file->f_mapping;
 	int err, ret;
+	struct dentry *dentry;
 
+	mapping = dentry->d_inode->i_mapping;
 	if (!file->f_op || !file->f_op->fsync) {
 		ret = -EINVAL;
 		goto out;
@@ -156,7 +158,7 @@ int vfs_fsync_range(struct file *file, loff_t start, loff_t end, int datasync)
 	 * livelocks in fsync_buffers_list().
 	 */
 	mutex_lock(&mapping->host->i_mutex);
-	err = file->f_op->fsync(file, datasync);
+	err = file->f_op->fsync(file, dentry, datasync);
 	if (!ret)
 		ret = err;
 	mutex_unlock(&mapping->host->i_mutex);

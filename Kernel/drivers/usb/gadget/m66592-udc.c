@@ -25,43 +25,44 @@
 #include <linux/delay.h>
 #include <linux/io.h>
 #include <linux/platform_device.h>
-#include <linux/slab.h>
+
 #include <linux/usb/ch9.h>
 #include <linux/usb/gadget.h>
 
 #include "m66592-udc.h"
+
 
 MODULE_DESCRIPTION("M66592 USB gadget driver");
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Yoshihiro Shimoda");
 MODULE_ALIAS("platform:m66592_udc");
 
- #define DRIVER_VERSION	"18 Oct 2007"
- 
- /* module parameters */
- #if defined(CONFIG_SUPERH_BUILT_IN_M66592)
- static unsigned short endian = M66592_LITTLE;
- module_param(endian, ushort, 0644);
- MODULE_PARM_DESC(endian, "data endian: big=0, little=0 (default=0)");
- #else
- static unsigned short clock = M66592_XTAL24;
- module_param(clock, ushort, 0644);
- MODULE_PARM_DESC(clock, "input clock: 48MHz=32768, 24MHz=16384, 12MHz=0 "
- 		"(default=16384)");
- 
- static unsigned short vif = M66592_LDRV;
- module_param(vif, ushort, 0644);
- MODULE_PARM_DESC(vif, "input VIF: 3.3V=32768, 1.5V=0 (default=32768)");
- 
- static unsigned short endian;
- module_param(endian, ushort, 0644);
- MODULE_PARM_DESC(endian, "data endian: big=256, little=0 (default=0)");
- 
- static unsigned short irq_sense = M66592_INTL;
- module_param(irq_sense, ushort, 0644);
- MODULE_PARM_DESC(irq_sense, "IRQ sense: low level=2, falling edge=0 "
- 		"(default=2)");
- #endif
+#define DRIVER_VERSION	"18 Oct 2007"
+
+/* module parameters */
+#if defined(CONFIG_SUPERH_BUILT_IN_M66592)
+static unsigned short endian = M66592_LITTLE;
+module_param(endian, ushort, 0644);
+MODULE_PARM_DESC(endian, "data endian: big=0, little=0 (default=0)");
+#else
+static unsigned short clock = M66592_XTAL24;
+module_param(clock, ushort, 0644);
+MODULE_PARM_DESC(clock, "input clock: 48MHz=32768, 24MHz=16384, 12MHz=0 "
+		"(default=16384)");
+
+static unsigned short vif = M66592_LDRV;
+module_param(vif, ushort, 0644);
+MODULE_PARM_DESC(vif, "input VIF: 3.3V=32768, 1.5V=0 (default=32768)");
+
+static unsigned short endian;
+module_param(endian, ushort, 0644);
+MODULE_PARM_DESC(endian, "data endian: big=256, little=0 (default=0)");
+
+static unsigned short irq_sense = M66592_INTL;
+module_param(irq_sense, ushort, 0644);
+MODULE_PARM_DESC(irq_sense, "IRQ sense: low level=2, falling edge=0 "
+		"(default=2)");
+#endif
 
 static const char udc_name[] = "m66592_udc";
 static const char *m66592_ep_name[] = {
@@ -276,8 +277,8 @@ static int pipe_buffer_setting(struct m66592 *m66592,
 		break;
 	case M66592_BULK:
 		bufnum = m66592->bi_bufnum +
- 			 (info->pipe - M66592_BASE_PIPENUM_BULK) * 16;
- 		m66592->bi_bufnum += 16;
+			 (info->pipe - M66592_BASE_PIPENUM_BULK) * 16;
+		m66592->bi_bufnum += 16;
 		buf_bsize = 7;
 		pipecfg |= M66592_DBLB;
 		if (!info->dir_in)
@@ -290,10 +291,9 @@ static int pipe_buffer_setting(struct m66592 *m66592,
 		buf_bsize = 7;
 		break;
 	}
-
- 	if (m66592->bi_bufnum > M66592_MAX_BUFNUM) {
- 		pr_err("m66592 pipe memory is insufficient(%d)\n",
- 				m66592->bi_bufnum);
+	if (m66592->bi_bufnum > M66592_MAX_BUFNUM) {
+		pr_err("m66592 pipe memory is insufficient(%d)\n",
+				m66592->bi_bufnum);
 		return -ENOMEM;
 	}
 
@@ -313,16 +313,16 @@ static void pipe_buffer_release(struct m66592 *m66592,
 	if (info->pipe == 0)
 		return;
 
- 	switch (info->type) {
- 	case M66592_BULK:
- 		if (is_bulk_pipe(info->pipe))
- 			m66592->bi_bufnum -= 16;
- 		break;
- 	case M66592_ISO:
- 		if (is_isoc_pipe(info->pipe))
- 			m66592->bi_bufnum -= 16;
- 		break;
- 	}
+	switch (info->type) {
+	case M66592_BULK:
+		if (is_bulk_pipe(info->pipe))
+			m66592->bi_bufnum -= 16;
+		break;
+	case M66592_ISO:
+		if (is_isoc_pipe(info->pipe))
+			m66592->bi_bufnum -= 16;
+		break;
+	}
 
 	if (is_bulk_pipe(info->pipe)) {
 		m66592->bulk--;
@@ -367,8 +367,8 @@ static void m66592_ep_setting(struct m66592 *m66592, struct m66592_ep *ep,
 			ep->fifosel = M66592_D0FIFOSEL;
 			ep->fifoctr = M66592_D0FIFOCTR;
 			ep->fifotrn = M66592_D0FIFOTRN;
- #if !defined(CONFIG_SUPERH_BUILT_IN_M66592)
- 		} else if (m66592->num_dma == 1) {
+#if !defined(CONFIG_SUPERH_BUILT_IN_M66592)
+		} else if (m66592->num_dma == 1) {
 			m66592->num_dma++;
 			ep->use_dma = 1;
 			ep->fifoaddr = M66592_D1FIFO;
@@ -619,66 +619,66 @@ static void start_ep0(struct m66592_ep *ep, struct m66592_request *req)
 		break;
 	}
 }
+
 #if defined(CONFIG_SUPERH_BUILT_IN_M66592)
 static void init_controller(struct m66592 *m66592)
 {
- 	m66592_bset(m66592, M66592_HSE, M66592_SYSCFG);		/* High spd */
- 	m66592_bclr(m66592, M66592_USBE, M66592_SYSCFG);
- 	m66592_bclr(m66592, M66592_DPRPU, M66592_SYSCFG);
- 	m66592_bset(m66592, M66592_USBE, M66592_SYSCFG);
- 
- 	/* This is a workaound for SH7722 2nd cut */
- 	m66592_bset(m66592, 0x8000, M66592_DVSTCTR);
- 	m66592_bset(m66592, 0x1000, M66592_TESTMODE);
- 	m66592_bclr(m66592, 0x8000, M66592_DVSTCTR);
- 
- 	m66592_bset(m66592, M66592_INTL, M66592_INTENB1);
- 
- 	m66592_write(m66592, 0, M66592_CFBCFG);
- 	m66592_write(m66592, 0, M66592_D0FBCFG);
- 	m66592_bset(m66592, endian, M66592_CFBCFG);
- 	m66592_bset(m66592, endian, M66592_D0FBCFG);
- }
- #else	/* #if defined(CONFIG_SUPERH_BUILT_IN_M66592) */
- static void init_controller(struct m66592 *m66592)
- {
- 	m66592_bset(m66592, (vif & M66592_LDRV) | (endian & M66592_BIGEND),
- 			M66592_PINCFG);
- 	m66592_bset(m66592, M66592_HSE, M66592_SYSCFG);		/* High spd */
- 	m66592_mdfy(m66592, clock & M66592_XTAL, M66592_XTAL, M66592_SYSCFG);
- 
- 	m66592_bclr(m66592, M66592_USBE, M66592_SYSCFG);
- 	m66592_bclr(m66592, M66592_DPRPU, M66592_SYSCFG);
- 	m66592_bset(m66592, M66592_USBE, M66592_SYSCFG);
- 
- 	m66592_bset(m66592, M66592_XCKE, M66592_SYSCFG);
- 
- 	msleep(3);
- 
- 	m66592_bset(m66592, M66592_RCKE | M66592_PLLC, M66592_SYSCFG);
- 
- 	msleep(1);
- 
- 	m66592_bset(m66592, M66592_SCKE, M66592_SYSCFG);
- 
- 	m66592_bset(m66592, irq_sense & M66592_INTL, M66592_INTENB1);
- 	m66592_write(m66592, M66592_BURST | M66592_CPU_ADR_RD_WR,
- 			M66592_DMA0CFG);
-}
+	m66592_bset(m66592, M66592_HSE, M66592_SYSCFG);		/* High spd */
+	m66592_bclr(m66592, M66592_USBE, M66592_SYSCFG);
+	m66592_bclr(m66592, M66592_DPRPU, M66592_SYSCFG);
+	m66592_bset(m66592, M66592_USBE, M66592_SYSCFG);
 
+	/* This is a workaound for SH7722 2nd cut */
+	m66592_bset(m66592, 0x8000, M66592_DVSTCTR);
+	m66592_bset(m66592, 0x1000, M66592_TESTMODE);
+	m66592_bclr(m66592, 0x8000, M66592_DVSTCTR);
+
+	m66592_bset(m66592, M66592_INTL, M66592_INTENB1);
+
+	m66592_write(m66592, 0, M66592_CFBCFG);
+	m66592_write(m66592, 0, M66592_D0FBCFG);
+	m66592_bset(m66592, endian, M66592_CFBCFG);
+	m66592_bset(m66592, endian, M66592_D0FBCFG);
+}
+#else	/* #if defined(CONFIG_SUPERH_BUILT_IN_M66592) */
+static void init_controller(struct m66592 *m66592)
+{
+	m66592_bset(m66592, (vif & M66592_LDRV) | (endian & M66592_BIGEND),
+			M66592_PINCFG);
+	m66592_bset(m66592, M66592_HSE, M66592_SYSCFG);		/* High spd */
+	m66592_mdfy(m66592, clock & M66592_XTAL, M66592_XTAL, M66592_SYSCFG);
+
+	m66592_bclr(m66592, M66592_USBE, M66592_SYSCFG);
+	m66592_bclr(m66592, M66592_DPRPU, M66592_SYSCFG);
+	m66592_bset(m66592, M66592_USBE, M66592_SYSCFG);
+
+	m66592_bset(m66592, M66592_XCKE, M66592_SYSCFG);
+
+	msleep(3);
+
+	m66592_bset(m66592, M66592_RCKE | M66592_PLLC, M66592_SYSCFG);
+
+	msleep(1);
+
+	m66592_bset(m66592, M66592_SCKE, M66592_SYSCFG);
+
+	m66592_bset(m66592, irq_sense & M66592_INTL, M66592_INTENB1);
+	m66592_write(m66592, M66592_BURST | M66592_CPU_ADR_RD_WR,
+			M66592_DMA0CFG);
+}
 #endif	/* #if defined(CONFIG_SUPERH_BUILT_IN_M66592) */
 
 static void disable_controller(struct m66592 *m66592)
 {
- #if !defined(CONFIG_SUPERH_BUILT_IN_M66592)
- 	m66592_bclr(m66592, M66592_SCKE, M66592_SYSCFG);
- 	udelay(1);
- 	m66592_bclr(m66592, M66592_PLLC, M66592_SYSCFG);
- 	udelay(1);
- 	m66592_bclr(m66592, M66592_RCKE, M66592_SYSCFG);
- 	udelay(1);
- 	m66592_bclr(m66592, M66592_XCKE, M66592_SYSCFG);
- #endif
+#if !defined(CONFIG_SUPERH_BUILT_IN_M66592)
+	m66592_bclr(m66592, M66592_SCKE, M66592_SYSCFG);
+	udelay(1);
+	m66592_bclr(m66592, M66592_PLLC, M66592_SYSCFG);
+	udelay(1);
+	m66592_bclr(m66592, M66592_RCKE, M66592_SYSCFG);
+	udelay(1);
+	m66592_bclr(m66592, M66592_XCKE, M66592_SYSCFG);
+#endif
 }
 
 static void m66592_start_xclock(struct m66592 *m66592)
@@ -687,9 +687,9 @@ static void m66592_start_xclock(struct m66592 *m66592)
 	u16 tmp;
 
 	tmp = m66592_read(m66592, M66592_SYSCFG);
- 	if (!(tmp & M66592_XCKE))
- 		m66592_bset(m66592, M66592_XCKE, M66592_SYSCFG);
- #endif
+	if (!(tmp & M66592_XCKE))
+		m66592_bset(m66592, M66592_XCKE, M66592_SYSCFG);
+#endif
 }
 
 /*-------------------------------------------------------------------------*/
@@ -1177,8 +1177,8 @@ static irqreturn_t m66592_irq(int irq, void *_m66592)
 	intsts0 = m66592_read(m66592, M66592_INTSTS0);
 	intenb0 = m66592_read(m66592, M66592_INTENB0);
 
-	#if defined(CONFIG_SUPERH_BUILT_IN_M66592)
- 	if (!intsts0 && !intenb0) {
+#if defined(CONFIG_SUPERH_BUILT_IN_M66592)
+	if (!intsts0 && !intenb0) {
 		/*
 		 * When USB clock stops, it cannot read register. Even if a
 		 * clock stops, the interrupt occurs. So this driver turn on
@@ -1435,15 +1435,14 @@ static struct usb_ep_ops m66592_ep_ops = {
 /*-------------------------------------------------------------------------*/
 static struct m66592 *the_controller;
 
-int usb_gadget_probe_driver(struct usb_gadget_driver *driver,
-		int (*bind)(struct usb_gadget *))
+int usb_gadget_register_driver(struct usb_gadget_driver *driver)
 {
 	struct m66592 *m66592 = the_controller;
 	int retval;
 
 	if (!driver
 			|| driver->speed != USB_SPEED_HIGH
-			|| !bind
+			|| !driver->bind
 			|| !driver->setup)
 		return -EINVAL;
 	if (!m66592)
@@ -1462,7 +1461,7 @@ int usb_gadget_probe_driver(struct usb_gadget_driver *driver,
 		goto error;
 	}
 
-	retval = bind(&m66592->gadget);
+	retval = driver->bind (&m66592->gadget);
 	if (retval) {
 		pr_err("bind to driver error (%d)\n", retval);
 		device_del(&m66592->gadget.dev);
@@ -1487,7 +1486,7 @@ error:
 
 	return retval;
 }
-EXPORT_SYMBOL(usb_gadget_probe_driver);
+EXPORT_SYMBOL(usb_gadget_register_driver);
 
 int usb_gadget_unregister_driver(struct usb_gadget_driver *driver)
 {
@@ -1536,8 +1535,8 @@ static int __exit m66592_remove(struct platform_device *pdev)
 	free_irq(platform_get_irq(pdev, 0), m66592);
 	m66592_free_request(&m66592->ep[0].ep, m66592->ep0_req);
 #if defined(CONFIG_SUPERH_BUILT_IN_M66592) && defined(CONFIG_HAVE_CLK)
- 	clk_disable(m66592->clk);
- 	clk_put(m66592->clk);
+	clk_disable(m66592->clk);
+	clk_put(m66592->clk);
 #endif
 	kfree(m66592);
 	return 0;
@@ -1583,7 +1582,6 @@ static int __init m66592_probe(struct platform_device *pdev)
 	/* initialize ucd */
 	m66592 = kzalloc(sizeof(struct m66592), GFP_KERNEL);
 	if (m66592 == NULL) {
-		ret = -ENOMEM;
 		pr_err("kzalloc error\n");
 		goto clean_up;
 	}
@@ -1605,9 +1603,9 @@ static int __init m66592_probe(struct platform_device *pdev)
 	m66592->timer.data = (unsigned long)m66592;
 	m66592->reg = reg;
 
- 	m66592->bi_bufnum = M66592_BASE_BUFNUM;
- 
- 	ret = request_irq(irq, m66592_irq, IRQF_DISABLED | IRQF_SHARED,
+	m66592->bi_bufnum = M66592_BASE_BUFNUM;
+
+	ret = request_irq(irq, m66592_irq, IRQF_DISABLED | IRQF_SHARED,
 			udc_name, m66592);
 	if (ret < 0) {
 		pr_err("request_irq error (%d)\n", ret);
@@ -1615,12 +1613,12 @@ static int __init m66592_probe(struct platform_device *pdev)
 	}
 
 #if defined(CONFIG_SUPERH_BUILT_IN_M66592) && defined(CONFIG_HAVE_CLK)
- 	snprintf(clk_name, sizeof(clk_name), "usbf%d", pdev->id);
- 	m66592->clk = clk_get(&pdev->dev, clk_name);
- 	if (IS_ERR(m66592->clk)) {
- 		dev_err(&pdev->dev, "cannot get clock \"%s\"\n", clk_name);
- 		ret = PTR_ERR(m66592->clk);
- 		goto clean_up2;
+	snprintf(clk_name, sizeof(clk_name), "usbf%d", pdev->id);
+	m66592->clk = clk_get(&pdev->dev, clk_name);
+	if (IS_ERR(m66592->clk)) {
+		dev_err(&pdev->dev, "cannot get clock \"%s\"\n", clk_name);
+		ret = PTR_ERR(m66592->clk);
+		goto clean_up2;
 	}
 	clk_enable(m66592->clk);
 #endif

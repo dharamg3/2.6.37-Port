@@ -3823,7 +3823,7 @@ void dev_seq_stop(struct seq_file *seq, void *v)
 static void dev_seq_printf_stats(struct seq_file *seq, struct net_device *dev)
 {
 	struct rtnl_link_stats64 temp;
-	const struct rtnl_link_stats64 *stats = dev_get_stats(dev, &temp);
+	const struct rtnl_link_stats64 *stats = dev_get_stats(dev);
 
 	seq_printf(seq, "%6s: %7llu %7llu %4llu %4llu %4llu %5llu %10llu %9llu "
 		   "%8llu %7llu %4llu %4llu %4llu %5llu %7llu %10llu\n",
@@ -5491,25 +5491,33 @@ static void netdev_stats_to_stats64(struct rtnl_link_stats64 *stats64,
  *	dev->netdev_ops->get_stats64 or dev->netdev_ops->get_stats;
  *	otherwise the internal statistics structure is used.
  */
-struct rtnl_link_stats64 *dev_get_stats(struct net_device *dev,
-					struct rtnl_link_stats64 *storage)
+const struct net_device_stats *dev_get_stats(struct net_device *dev)
 {
 	const struct net_device_ops *ops = dev->netdev_ops;
 
-	if (ops->ndo_get_stats64) {
-		memset(storage, 0, sizeof(*storage));
-		ops->ndo_get_stats64(dev, storage);
-	} else if (ops->ndo_get_stats) {
-		netdev_stats_to_stats64(storage, ops->ndo_get_stats(dev));
-	} else {
-		netdev_stats_to_stats64(storage, &dev->stats);
-		dev_txq_stats_fold(dev, storage);
+	if (ops->ndo_get_stats)
+		return ops->ndo_get_stats(dev);
+	else {
+		unsigned long tx_bytes = 0, tx_packets = 0, tx_dropped = 0;
+		struct net_device_stats *stats = &dev->stats;
+		unsigned int i;
+		struct netdev_queue *txq;
+
+		for (i = 0; i < dev->num_tx_queues; i++) {
+			txq = netdev_get_tx_queue(dev, i);
+			tx_bytes   += txq->tx_bytes;
+			tx_packets += txq->tx_packets;
+			tx_dropped += txq->tx_dropped;
+		}
+		if (tx_bytes || tx_packets || tx_dropped) {
+			stats->tx_bytes   = tx_bytes;
+			stats->tx_packets = tx_packets;
+			stats->tx_dropped = tx_dropped;
+		}
+		return stats;
 	}
-	storage->rx_dropped += atomic_long_read(&dev->rx_dropped);
-	return storage;
 }
 EXPORT_SYMBOL(dev_get_stats);
-
 struct netdev_queue *dev_ingress_queue_create(struct net_device *dev)
 {
 	struct netdev_queue *queue = dev_ingress_queue(dev);

@@ -22,7 +22,6 @@
  */
 
 #include <linux/platform_device.h>
-#include <linux/slab.h>
 
 #include "lh7a40x_udc.h"
 
@@ -408,8 +407,7 @@ static void udc_enable(struct lh7a40x_udc *dev)
 /*
   Register entry point for the peripheral controller driver.
 */
-int usb_gadget_probe_driver(struct usb_gadget_driver *driver,
-		int (*bind)(struct usb_gadget *))
+int usb_gadget_register_driver(struct usb_gadget_driver *driver)
 {
 	struct lh7a40x_udc *dev = the_controller;
 	int retval;
@@ -418,7 +416,7 @@ int usb_gadget_probe_driver(struct usb_gadget_driver *driver,
 
 	if (!driver
 			|| driver->speed != USB_SPEED_FULL
-			|| !bind
+			|| !driver->bind
 			|| !driver->disconnect
 			|| !driver->setup)
 		return -EINVAL;
@@ -432,10 +430,10 @@ int usb_gadget_probe_driver(struct usb_gadget_driver *driver,
 	dev->gadget.dev.driver = &driver->driver;
 
 	device_add(&dev->gadget.dev);
-	retval = bind(&dev->gadget);
+	retval = driver->bind(&dev->gadget);
 	if (retval) {
- 		printk("%s: bind to driver %s --> error %d\n", dev->gadget.name,
- 		       driver->driver.name, retval);
+		printk("%s: bind to driver %s --> error %d\n", dev->gadget.name,
+		       driver->driver.name, retval);
 		device_del(&dev->gadget.dev);
 
 		dev->driver = 0;
@@ -447,13 +445,15 @@ int usb_gadget_probe_driver(struct usb_gadget_driver *driver,
 	 * for set_configuration as well as eventual disconnect.
 	 * NOTE:  this shouldn't power up until later.
 	 */
- 	printk("%s: registered gadget driver '%s'\n", dev->gadget.name,
- 	       driver->driver.name);
+	printk("%s: registered gadget driver '%s'\n", dev->gadget.name,
+	       driver->driver.name);
+
 	udc_enable(dev);
 
 	return 0;
 }
-EXPORT_SYMBOL(usb_gadget_probe_driver);
+
+EXPORT_SYMBOL(usb_gadget_register_driver);
 
 /*
   Unregister entry point for the peripheral controller driver.
@@ -581,7 +581,7 @@ static int read_fifo(struct lh7a40x_ep *ep, struct lh7a40x_request *req)
 			 * discard the extra data.
 			 */
 			if (req->req.status != -EOVERFLOW)
-			printk("%s overflow %d\n", ep->ep.name, count);
+				printk("%s overflow %d\n", ep->ep.name, count);
 			req->req.status = -EOVERFLOW;
 		} else {
 			*buf++ = byte;

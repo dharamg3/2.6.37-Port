@@ -1190,7 +1190,7 @@ static void uart_set_ldisc(struct tty_struct *tty)
 	struct uart_port *uport = state->uart_port;
 
 	if (uport->ops->set_ldisc)
-		uport->ops->set_ldisc(uport);
+		uport->ops->set_ldisc(uport,0);
 }
 
 static void uart_set_termios(struct tty_struct *tty,
@@ -1271,7 +1271,7 @@ static void uart_close(struct tty_struct *tty, struct file *filp)
 	struct tty_port *port;
 	struct uart_port *uport;
 
-	BUG_ON(!kernel_locked());
+	BUG_ON(!current->lock_depth >= 0);
 
 	if (!state)
 		return;
@@ -1428,7 +1428,7 @@ static void uart_hangup(struct tty_struct *tty)
 	struct uart_state *state = tty->driver_data;
 	struct tty_port *port = &state->port;
 
-	BUG_ON(!kernel_locked());
+	BUG_ON(!current->lock_depth >= 0);
 	pr_debug("uart_hangup(%d)\n", state->uart_port->line);
 
 	mutex_lock(&port->mutex);
@@ -1609,7 +1609,7 @@ static int uart_open(struct tty_struct *tty, struct file *filp)
 	struct tty_port *port;
 	int retval, line = tty->index;
 
-	BUG_ON(!kernel_locked());
+	BUG_ON(!current->lock_depth >= 0);
 	pr_debug("uart_open(%d) called\n", line);
 
 	/*

@@ -769,6 +769,7 @@ static inline int usb_gadget_disconnect(struct usb_gadget *gadget)
 struct usb_gadget_driver {
 	char			*function;
 	enum usb_device_speed	speed;
+	int                     (*bind)(struct usb_gadget *);
 	void			(*unbind)(struct usb_gadget *);
 	int			(*setup)(struct usb_gadget *,
 					const struct usb_ctrlrequest *);
@@ -790,7 +791,18 @@ struct usb_gadget_driver {
  * these will usually be implemented directly by the hardware-dependent
  * usb bus interface driver, which will only support a single driver.
  */
-
+/**
+ * usb_gadget_register_driver - register a gadget driver
+ * @driver:the driver being registered
+ * Context: can sleep
+ *
+ * Call this in your gadget driver's module initialization function,
+ * to tell the underlying usb controller driver about your driver.
+ * The driver's bind() function will be called to bind it to a
+ * gadget before this registration call returns.  It's expected that
+ * the bind() functions will be in init sections.
+ */
+int usb_gadget_register_driver(struct usb_gadget_driver *driver);
 /**
  * usb_gadget_probe_driver - probe a gadget driver
  * @driver: the driver being registered

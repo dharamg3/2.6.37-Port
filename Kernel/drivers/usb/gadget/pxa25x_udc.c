@@ -64,10 +64,6 @@
 #include <mach/pxa25x-udc.h>
 #endif
 
-#ifdef CONFIG_ARCH_LUBBOCK
-#include <mach/lubbock.h>
-#endif
-
 #include <asm/mach/udc_pxa2xx.h>
 
 
@@ -1017,10 +1013,10 @@ static const struct usb_gadget_ops pxa25x_udc_ops = {
 	.wakeup		= pxa25x_udc_wakeup,
 	.vbus_session	= pxa25x_udc_vbus_session,
 	.pullup		= pxa25x_udc_pullup,
- 
- 	// .vbus_draw ... boards may consume current from VBUS, up to
- 	// 100-500mA based on config.  the 500uA suspend ceiling means
- 	// that exclusively vbus-powered PXA designs violate USB specs.
+
+	// .vbus_draw ... boards may consume current from VBUS, up to
+	// 100-500mA based on config.  the 500uA suspend ceiling means
+	// that exclusively vbus-powered PXA designs violate USB specs.
 };
 
 /*-------------------------------------------------------------------------*/
@@ -1267,15 +1263,14 @@ static void udc_enable (struct pxa25x_udc *dev)
  * disconnect is reported.  then a host may connect again, or
  * the driver might get unbound.
  */
-int usb_gadget_probe_driver(struct usb_gadget_driver *driver,
-		int (*bind)(struct usb_gadget *))
+int usb_gadget_register_driver(struct usb_gadget_driver *driver)
 {
 	struct pxa25x_udc	*dev = the_controller;
 	int			retval;
 
 	if (!driver
 			|| driver->speed < USB_SPEED_FULL
-			|| !bind
+			|| !driver->bind
 			|| !driver->disconnect
 			|| !driver->setup)
 		return -EINVAL;
@@ -1296,7 +1291,7 @@ fail:
 		dev->gadget.dev.driver = NULL;
 		return retval;
 	}
-	retval = bind(&dev->gadget);
+	retval = driver->bind(&dev->gadget);
 	if (retval) {
 		DMSG("bind to driver %s --> error %d\n",
 				driver->driver.name, retval);
@@ -1308,12 +1303,11 @@ fail:
 	 * for set_configuration as well as eventual disconnect.
 	 */
 	DMSG("registered gadget driver '%s'\n", driver->driver.name);
-
 	pullup(dev);
 	dump_state(dev);
 	return 0;
 }
-EXPORT_SYMBOL(usb_gadget_probe_driver);
+EXPORT_SYMBOL(usb_gadget_register_driver);
 
 static void
 stop_activity(struct pxa25x_udc *dev, struct usb_gadget_driver *driver)
@@ -2304,7 +2298,7 @@ static int __exit pxa25x_udc_remove(struct platform_device *pdev)
 		free_irq(gpio_to_irq(dev->mach->gpio_vbus), dev);
 		gpio_free(dev->mach->gpio_vbus);
 	}
-	if (gpio_is_valid(dev->mach->gpio_pullup))
+	if (dev->mach->gpio_pullup)
 		gpio_free(dev->mach->gpio_pullup);
 
 	clk_put(dev->clk);

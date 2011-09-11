@@ -293,7 +293,7 @@ int snd_pcm_update_state(struct snd_pcm_substream *substream,
 		else
 			xrun(substream);
 		return -EPIPE;
-		}
+		
 	}
 	if (runtime->twake) {
 		if (avail >= runtime->twake)

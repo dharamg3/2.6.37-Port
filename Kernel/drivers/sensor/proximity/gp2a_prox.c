@@ -19,6 +19,9 @@
 #include <plat/gpio-cfg.h>
 #include <linux/i2c/pmic.h>
 #include <linux/wakelock.h>
+#include <linux/i2c/max8998.h>
+#include <linux/slab.h>
+#include <linux/slub_def.h>
  
 #include "gp2a_prox.h"
 #include "prox_ioctls.h"

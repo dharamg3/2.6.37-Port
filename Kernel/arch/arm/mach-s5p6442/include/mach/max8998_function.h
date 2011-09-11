@@ -12,6 +12,9 @@ typedef  unsigned char     boolean;         /* Unsigned 8  bit value type. */
 #define FALSE 0
 #endif
 
+#define ESAFEOUT1		0x80
+#define ESAFEOUT2		0x40
+
 /*
 Max8998은 SRAD pin의 상태에 따라서 PM part의 slave address가 설정이 됩니다.
 PM part Slave address = 0xAC (SRAD = 1)

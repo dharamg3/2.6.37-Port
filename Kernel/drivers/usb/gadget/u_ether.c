@@ -23,7 +23,6 @@
 /* #define VERBOSE_DEBUG */
 
 #include <linux/kernel.h>
-#include <linux/gfp.h>
 #include <linux/device.h>
 #include <linux/ctype.h>
 #include <linux/etherdevice.h>
@@ -163,6 +162,8 @@ static inline int qlen(struct usb_gadget *gadget)
 #define INFO(dev, fmt, args...) \
 	printk(fmt, ##args)
 
+
+
 #endif
 /*-------------------------------------------------------------------------*/
 
@@ -271,7 +272,10 @@ rx_submit(struct eth_dev *dev, struct usb_request *req, gfp_t gfp_flags)
 	skb_reserve(skb, NET_IP_ALIGN + 6);
 //	skb_reserve(skb, NET_IP_ALIGN);
 
+
 	req->buf = skb->data;
+
+
 	req->length = size;
 	req->complete = rx_complete;
 	req->context = skb;
@@ -743,7 +747,18 @@ static char *host_addr;
 module_param(host_addr, charp, S_IRUGO);
 MODULE_PARM_DESC(host_addr, "Host Ethernet Address");
 
-static int get_ether_addr(const char *str, u8 *dev_addr)
+
+static u8 __init nibble(unsigned char c)
+{
+	if (isdigit(c))
+		return c - '0';
+	c = toupper(c);
+	if (isxdigit(c))
+		return 10 + c - 'A';
+	return 0;
+}
+
+static int __init get_ether_addr(const char *str, u8 *dev_addr)
 {
 	if (str) {
 		unsigned	i;
@@ -753,8 +768,8 @@ static int get_ether_addr(const char *str, u8 *dev_addr)
 
 			if ((*str == '.') || (*str == ':'))
 				str++;
-			num = hex_to_bin(*str++) << 4;
-			num |= hex_to_bin(*str++);
+			num = nibble(*str++) << 4;
+			num |= (nibble(*str++));
 			dev_addr [i] = num;
 		}
 		if (is_valid_ether_addr(dev_addr))
@@ -775,10 +790,6 @@ static const struct net_device_ops eth_netdev_ops = {
 	.ndo_validate_addr	= eth_validate_addr,
 };
 
-static struct device_type gadget_type = {
-	.name	= "gadget",
-};
-
 /**
  * gether_setup - initialize one ethernet-over-usb link
  * @g: gadget to associated with these links
@@ -792,7 +803,7 @@ static struct device_type gadget_type = {
  *
  * Returns negative errno, or zero on success
  */
-int gether_setup(struct usb_gadget *g, u8 ethaddr[ETH_ALEN])
+int __init gether_setup(struct usb_gadget *g, u8 ethaddr[ETH_ALEN])
 {
 	struct eth_dev		*dev;
 	struct net_device	*net;
@@ -836,11 +847,11 @@ int gether_setup(struct usb_gadget *g, u8 ethaddr[ETH_ALEN])
 	 *  - iff DATA transfer is active, carrier is "on"
 	 *  - tx queueing enabled if open *and* carrier is "on"
 	 */
+	netif_stop_queue(net);
 	netif_carrier_off(net);
 
 	dev->gadget = g;
 	SET_NETDEV_DEV(net, &g->dev);
-	SET_NETDEV_DEVTYPE(net, &gadget_type);
 
 	status = register_netdev(net);
 	if (status < 0) {

@@ -11,6 +11,7 @@
 #include "fsa9480_i2c.h"
 
 #include <linux/wakelock.h>
+#include <mach/max8998_function.h>
 
 
 static struct wake_lock fsa9480_wake_lock;

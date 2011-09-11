@@ -204,7 +204,7 @@ static void print_regs(struct udc *dev)
 		DBG(dev, "DMA mode       = PPBNDU (packet per buffer "
 			"WITHOUT desc. update)\n");
 		dev_info(&dev->pdev->dev, "DMA mode (%s)\n", "PPBNDU");
-	} else if (use_dma && use_dma_ppb && use_dma_ppb_du) {
+	} else if (use_dma && use_dma_ppb_du && use_dma_ppb_du) {
 		DBG(dev, "DMA mode       = PPBDU (packet per buffer "
 			"WITH desc. update)\n");
 		dev_info(&dev->pdev->dev, "DMA mode (%s)\n", "PPBDU");
@@ -1219,7 +1219,7 @@ udc_queue(struct usb_ep *usbep, struct usb_request *usbreq, gfp_t gfp)
 				tmp = readl(&dev->regs->ep_irqmsk);
 				tmp &= AMD_UNMASK_BIT(ep->num);
 				writel(tmp, &dev->regs->ep_irqmsk);
-			}
+		}
 
 	} else if (ep->dma) {
 
@@ -1955,14 +1955,13 @@ static int setup_ep0(struct udc *dev)
 }
 
 /* Called by gadget driver to register itself */
-int usb_gadget_probe_driver(struct usb_gadget_driver *driver,
-		int (*bind)(struct usb_gadget *))
+int usb_gadget_register_driver(struct usb_gadget_driver *driver)
 {
 	struct udc		*dev = udc;
 	int			retval;
 	u32 tmp;
 
-	if (!driver || !bind || !driver->setup
+	if (!driver || !driver->bind || !driver->setup
 			|| driver->speed != USB_SPEED_HIGH)
 		return -EINVAL;
 	if (!dev)
@@ -1974,7 +1973,7 @@ int usb_gadget_probe_driver(struct usb_gadget_driver *driver,
 	dev->driver = driver;
 	dev->gadget.dev.driver = &driver->driver;
 
-	retval = bind(&dev->gadget);
+	retval = driver->bind(&dev->gadget);
 
 	/* Some gadget drivers use both ep0 directions.
 	 * NOTE: to gadget driver, ep0 is just one endpoint...
@@ -2002,7 +2001,7 @@ int usb_gadget_probe_driver(struct usb_gadget_driver *driver,
 
 	return 0;
 }
-EXPORT_SYMBOL(usb_gadget_probe_driver);
+EXPORT_SYMBOL(usb_gadget_register_driver);
 
 /* shutdown requests and disconnect from gadget */
 static void
@@ -2384,35 +2383,35 @@ static irqreturn_t udc_data_in_isr(struct udc *dev, int ep_ix)
 		if (!ep->cancel_transfer && !list_empty(&ep->queue)) {
 			req = list_entry(ep->queue.next,
 					struct udc_request, queue);
-			/*
- 				 * length bytes transfered
- 				 * check dma done of last desc. in PPBDU mode
- 				 */
- 				if (use_dma_ppb_du) {
- 					td = udc_get_last_dma_desc(req);
- 					if (td) {
- 						dma_done =
- 							AMD_GETBITS(td->status,
- 							UDC_DMA_IN_STS_BS);
- 						/* don't care DMA done */
- 					req->req.actual = req->req.length;
- 					}
- 				} else {
- 					/* assume all bytes transferred */
-				req->req.actual = req->req.length;
-			}
-
-		if (req->req.actual == req->req.length) {
- 					/* complete req */
- 					complete_req(ep, req, 0);
- 					req->dma_going = 0;
- 					/* further request available ? */
- 					if (list_empty(&ep->queue)) {
- 						/* disable interrupt */
-					tmp = readl(&dev->regs->ep_irqmsk);
-					tmp |= AMD_BIT(ep->num);
-					writel(tmp, &dev->regs->ep_irqmsk);
+				/*
+				 * length bytes transfered
+				 * check dma done of last desc. in PPBDU mode
+				 */
+				if (use_dma_ppb_du) {
+					td = udc_get_last_dma_desc(req);
+					if (td) {
+						dma_done =
+							AMD_GETBITS(td->status,
+							UDC_DMA_IN_STS_BS);
+						/* don't care DMA done */
+					req->req.actual = req->req.length;
+					}
+				} else {
+					/* assume all bytes transferred */
+					req->req.actual = req->req.length;
 				}
+
+				if (req->req.actual == req->req.length) {
+					/* complete req */
+					complete_req(ep, req, 0);
+					req->dma_going = 0;
+					/* further request available ? */
+					if (list_empty(&ep->queue)) {
+						/* disable interrupt */
+					tmp = readl(&dev->regs->ep_irqmsk);
+						tmp |= AMD_BIT(ep->num);
+					writel(tmp, &dev->regs->ep_irqmsk);
+					}
 			}
 		}
 		ep->cancel_transfer = 0;
@@ -3384,10 +3383,8 @@ static int udc_probe(struct udc *dev)
 	udc = dev;
 
 	retval = device_register(&dev->gadget.dev);
-	if (retval) {
-		put_device(&dev->gadget.dev);
+	if (retval)
 		goto finished;
-	}
 
 	/* timer init */
 	init_timer(&udc_timer);

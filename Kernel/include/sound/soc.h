@@ -253,8 +253,7 @@ enum snd_soc_control_type {
 	SND_SOC_SPI,
 };
 
-int snd_soc_register_platform(struct device *dev,
-		struct snd_soc_platform_driver *platform_drv);
+int snd_soc_register_platform(struct snd_soc_platform *platform);
 void snd_soc_unregister_platform(struct device *dev);
 int snd_soc_register_codec(struct device *dev,
 		struct snd_soc_codec_driver *codec_drv,
@@ -420,19 +419,32 @@ struct snd_soc_ops {
 	int (*trigger)(struct snd_pcm_substream *, int);
 };
 
+/* SoC Device - the audio subsystem */
+struct snd_soc_device {
+	struct device *dev;
+	struct snd_soc_card *card;
+	struct snd_soc_codec_device *codec_dev;
+	void *codec_data;
+};
+
 /* SoC Audio Codec device */
 struct snd_soc_codec {
 	const char *name;
 	int id;
 	struct device *dev;
+	struct module *owner;
 	struct snd_soc_codec_driver *driver;
+	struct snd_soc_device *socdev;
 
 	struct mutex mutex;
 	struct snd_soc_card *card;
 	struct list_head list;
 	struct list_head card_list;
 	int num_dai;
+	void *private_data;
 
+	int (*set_bias_level)(struct snd_soc_codec *,
+			      enum snd_soc_bias_level level);
 	/* runtime */
 	struct snd_ac97 *ac97;  /* for ad-hoc ac97 devices */
 	unsigned int active;
@@ -450,6 +462,10 @@ struct snd_soc_codec {
 	hw_write_t hw_write;
 	unsigned int (*hw_read)(struct snd_soc_codec *, unsigned int);
 	void *reg_cache;
+	unsigned int (*read)(struct snd_soc_codec *, unsigned int);
+	int (*write)(struct snd_soc_codec *, unsigned int, unsigned int);
+
+	struct snd_soc_dai *dai;
 
 	/* dapm */
 	u32 pop_time;
@@ -526,10 +542,17 @@ struct snd_soc_platform {
 
 	unsigned int suspended:1; /* platform is suspended */
 	unsigned int probed:1;
+	
+	int (*pcm_new)(struct snd_card *, struct snd_soc_dai *,
+		struct snd_pcm *);
+	void (*pcm_free)(struct snd_pcm *);
 
 	struct snd_soc_card *card;
 	struct list_head list;
 	struct list_head card_list;
+
+	/* platform stream ops */
+	struct snd_pcm_ops *pcm_ops;
 };
 
 struct snd_soc_dai_link {
@@ -540,7 +563,8 @@ struct snd_soc_dai_link {
 	const char *platform_name;	/* for multi-platform */
 	const char *cpu_dai_name;
 	const char *codec_dai_name;
-
+	struct snd_soc_dai *codec_dai;
+	struct snd_soc_dai *cpu_dai;
 	/* Keep DAI active over suspend */
 	unsigned int ignore_suspend:1;
 
@@ -589,7 +613,7 @@ struct snd_soc_card {
 	int num_rtd;
 
 	struct work_struct deferred_resume_work;
-
+	struct snd_soc_platform *platform;
 	/* lists of probed devices belonging to this card */
 	struct list_head codec_dev_list;
 	struct list_head platform_dev_list;
@@ -601,6 +625,7 @@ struct snd_soc_pcm_runtime  {
 	struct device dev;
 	struct snd_soc_card *card;
 	struct snd_soc_dai_link *dai_link;
+	struct snd_soc_dai_link *dai;
 
 	unsigned int complete:1;
 	unsigned int dev_registered:1;

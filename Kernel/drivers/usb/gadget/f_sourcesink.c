@@ -21,10 +21,10 @@
 
 /* #define VERBOSE_DEBUG */
 
-#include <linux/slab.h>
 #include <linux/kernel.h>
-#include <linux/device.h>
 #include <linux/utsname.h>
+#include <linux/device.h>
+
 #include "g_zero.h"
 #include "gadget_chips.h"
 
@@ -66,6 +66,7 @@ static inline struct f_sourcesink *func_to_ss(struct usb_function *f)
 {
 	return container_of(f, struct f_sourcesink, function);
 }
+
 static unsigned autoresume;
 module_param(autoresume, uint, 0);
 MODULE_PARM_DESC(autoresume, "zero, or seconds before remote wakeup");
@@ -154,21 +155,20 @@ static struct usb_gadget_strings *sourcesink_strings[] = {
 
 /*-------------------------------------------------------------------------*/
 
- static void sourcesink_autoresume(unsigned long _c)
- {
- 	struct usb_composite_dev *cdev = (void *)_c;
- 	struct usb_gadget	*g = cdev->gadget;
- 
- 	/* Normally the host would be woken up for something
- 	 * more significant than just a timer firing; likely
- 	 * because of some direct user request.
- 	 */
- 	if (g->speed != USB_SPEED_UNKNOWN) {
- 		int status = usb_gadget_wakeup(g);
- 		DBG(cdev, "%s --> %d\n", __func__, status);
- 	}
- }
- 
+static void sourcesink_autoresume(unsigned long _c)
+{
+	struct usb_composite_dev *cdev = (void *)_c;
+	struct usb_gadget	*g = cdev->gadget;
+
+	/* Normally the host would be woken up for something
+	 * more significant than just a timer firing; likely
+	 * because of some direct user request.
+	 */
+	if (g->speed != USB_SPEED_UNKNOWN) {
+		int status = usb_gadget_wakeup(g);
+		DBG(cdev, "%s --> %d\n", __func__, status);
+	}
+}
 
 static int __init
 sourcesink_bind(struct usb_configuration *c, struct usb_function *f)
@@ -198,9 +198,8 @@ autoconf_fail:
 		goto autoconf_fail;
 	ss->out_ep->driver_data = cdev;	/* claim */
 
- 	setup_timer(&ss->resume, sourcesink_autoresume,
+	setup_timer(&ss->resume, sourcesink_autoresume,
 			(unsigned long) c->cdev);
-
 
 	/* support high speed hardware */
 	if (gadget_is_dualspeed(c->cdev->gadget)) {
@@ -427,30 +426,30 @@ static void sourcesink_disable(struct usb_function *f)
 	disable_source_sink(ss);
 }
 
- static void sourcesink_suspend(struct usb_function *f)
- {
- 	struct f_sourcesink	*ss = func_to_ss(f);
- 	struct usb_composite_dev *cdev = f->config->cdev;
- 
- 	if (cdev->gadget->speed == USB_SPEED_UNKNOWN)
- 		return;
- 
- 	if (autoresume) {
- 		mod_timer(&ss->resume, jiffies + (HZ * autoresume));
- 		DBG(cdev, "suspend, wakeup in %d seconds\n", autoresume);
- 	} else
- 		DBG(cdev, "%s\n", __func__);
- }
- 
- static void sourcesink_resume(struct usb_function *f)
- {
- 	struct f_sourcesink	*ss = func_to_ss(f);
- 	struct usb_composite_dev *cdev = f->config->cdev;
- 
- 	DBG(cdev, "%s\n", __func__);
- 	del_timer(&ss->resume);
- }
- 
+static void sourcesink_suspend(struct usb_function *f)
+{
+	struct f_sourcesink	*ss = func_to_ss(f);
+	struct usb_composite_dev *cdev = f->config->cdev;
+
+	if (cdev->gadget->speed == USB_SPEED_UNKNOWN)
+		return;
+
+	if (autoresume) {
+		mod_timer(&ss->resume, jiffies + (HZ * autoresume));
+		DBG(cdev, "suspend, wakeup in %d seconds\n", autoresume);
+	} else
+		DBG(cdev, "%s\n", __func__);
+}
+
+static void sourcesink_resume(struct usb_function *f)
+{
+	struct f_sourcesink	*ss = func_to_ss(f);
+	struct usb_composite_dev *cdev = f->config->cdev;
+
+	DBG(cdev, "%s\n", __func__);
+	del_timer(&ss->resume);
+}
+
 /*-------------------------------------------------------------------------*/
 
 static int __init sourcesink_bind_config(struct usb_configuration *c)
@@ -549,6 +548,7 @@ unknown:
 static struct usb_configuration sourcesink_driver = {
 	.label		= "source/sink",
 	.strings	= sourcesink_strings,
+	.bind		= sourcesink_bind_config,
 	.setup		= sourcesink_setup,
 	.bConfigurationValue = 3,
 	.bmAttributes	= USB_CONFIG_ATT_SELFPOWER,
@@ -582,5 +582,5 @@ int __init sourcesink_add(struct usb_composite_dev *cdev)
 		sourcesink_driver.bmAttributes |= USB_CONFIG_ATT_WAKEUP;
 	}
 
-	return usb_add_config(cdev, &sourcesink_driver, sourcesink_bind_config);
+	return usb_add_config(cdev, &sourcesink_driver);
 }

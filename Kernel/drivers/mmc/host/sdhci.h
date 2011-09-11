@@ -199,9 +199,6 @@
 
 #define SDHCI_MAX_DIV_SPEC_200	256
 #define SDHCI_MAX_DIV_SPEC_300	2046
-#if SUPPORT_CLK_GATING
-	struct timer_list	busy_check_timer;
-#endif
 
 struct sdhci_ops {
 #ifdef CONFIG_MMC_SDHCI_IO_ACCESSORS

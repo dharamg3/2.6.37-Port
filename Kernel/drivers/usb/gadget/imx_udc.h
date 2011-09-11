@@ -170,7 +170,7 @@ struct imx_udc_struct {
 /* #define DEBUG_IRQ */
 /* #define DEBUG_EPIRQ */
 /* #define DEBUG_DUMP */
-#define DEBUG_ERR 
+#define DEBUG_ERR
 
 #ifdef DEBUG_REQ
 	#define D_REQ(dev, args...)	dev_dbg(dev, ## args)
@@ -265,7 +265,6 @@ struct imx_udc_struct {
 
 		dev_dbg(imx_ep->imx_usb->dev,
 			"<%s> EP%d_INTR=[%s%s%s%s%s%s%s%s%s]\n", label, EP_NO(imx_ep),
-			label, EP_NO(imx_ep),
 			(temp & EPINTR_FIFO_FULL) ? " full" : "",
 			(temp & EPINTR_FIFO_EMPTY) ? " fempty" : "",
 			(temp & EPINTR_FIFO_ERROR) ? " ferr" : "",
@@ -277,9 +276,9 @@ struct imx_udc_struct {
 			(temp & EPINTR_EOT) ? " eot" : "");
 
 		temp = __raw_readl(imx_ep->imx_usb->base + USB_EP_STAT(EP_NO(imx_ep)));
+
 		dev_dbg(imx_ep->imx_usb->dev,
 			"<%s> EP%d_STAT=[%s%s bcount=%d]\n", label, EP_NO(imx_ep),
-			label, EP_NO(imx_ep),
 			(temp & EPSTAT_SIP) ? " sip" : "",
 			(temp & EPSTAT_STALL) ? " stall" : "",
 			(temp & EPSTAT_BCOUNT) >> 16);
@@ -288,7 +287,6 @@ struct imx_udc_struct {
 
 		dev_dbg(imx_ep->imx_usb->dev,
 			"<%s> EP%d_FSTAT=[%s%s%s%s%s%s%s]\n", label, EP_NO(imx_ep),
-			label, EP_NO(imx_ep),
 			(temp & FSTAT_ERR) ? " ferr" : "",
 			(temp & FSTAT_UF) ? " funder" : "",
 			(temp & FSTAT_OF) ? " fover" : "",
@@ -307,7 +305,7 @@ struct imx_udc_struct {
 			return;
 		}
 
-	if ((!EP_NO(imx_ep) && imx_ep->imx_usb->ep0state == EP0_IN_DATA_PHASE)
+		if ((!EP_NO(imx_ep) && imx_ep->imx_usb->ep0state == EP0_IN_DATA_PHASE)
 			|| (EP_NO(imx_ep) && EP_DIR(imx_ep))) {
 
 			dev_dbg(imx_ep->imx_usb->dev, "<%s> request dump <", label);

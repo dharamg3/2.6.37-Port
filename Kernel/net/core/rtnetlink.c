@@ -812,7 +812,7 @@ static int rtnl_fill_ifinfo(struct sk_buff *skb, struct net_device *dev,
 	if (attr == NULL)
 		goto nla_put_failure;
 
-	stats = dev_get_stats(dev, &temp);
+	stats = dev_get_stats(dev);
 	copy_rtnl_link_stats(nla_data(attr), stats);
 
 	attr = nla_reserve(skb, IFLA_STATS64,

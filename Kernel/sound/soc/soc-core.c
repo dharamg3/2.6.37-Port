@@ -2968,28 +2968,19 @@ static inline char *fmt_multiple_name(struct device *dev,
  *
  * @dai: DAI to register
  */
-int snd_soc_register_dai(struct device *dev,
-		struct snd_soc_dai_driver *dai_drv)
+int snd_soc_register_dai(struct snd_soc_dai *dai)
 {
-	struct snd_soc_dai *dai;
+	if (!dai->name)
+		return -EINVAL;
 
-	dev_dbg(dev, "dai register %s\n", dev_name(dev));
+	/* The device should become mandatory over time */
+	if (!dai->dev)
+		printk(KERN_WARNING "No device for DAI %s\n", dai->name);
 
-	dai = kzalloc(sizeof(struct snd_soc_dai), GFP_KERNEL);
-	if (dai == NULL)
-			return -ENOMEM;
+	if (!dai->ops)
+		dai->ops = &null_dai_ops;
 
-	/* create DAI component name */
-	dai->name = fmt_single_name(dev, &dai->id);
-	if (dai->name == NULL) {
-		kfree(dai);
-		return -ENOMEM;
-	}
-
-	dai->dev = dev;
-	dai->driver = dai_drv;
-	if (!dai->driver->ops)
-		dai->driver->ops = &null_dai_ops;
+	INIT_LIST_HEAD(&dai->list);
 
 	mutex_lock(&client_mutex);
 	list_add(&dai->list, &dai_list);
@@ -3001,6 +2992,7 @@ int snd_soc_register_dai(struct device *dev,
 	return 0;
 }
 EXPORT_SYMBOL_GPL(snd_soc_register_dai);
+
 
 /**
  * snd_soc_unregister_dai - Unregister a DAI from the ASoC core
@@ -3107,26 +3099,12 @@ EXPORT_SYMBOL_GPL(snd_soc_unregister_dais);
  *
  * @platform: platform to register
  */
-int snd_soc_register_platform(struct device *dev,
-		struct snd_soc_platform_driver *platform_drv)
+int snd_soc_register_platform(struct snd_soc_platform *platform)
 {
-	struct snd_soc_platform *platform;
+	if (!platform->name)
+		return -EINVAL;
 
-	dev_dbg(dev, "platform register %s\n", dev_name(dev));
-
-	platform = kzalloc(sizeof(struct snd_soc_platform), GFP_KERNEL);
-	if (platform == NULL)
-			return -ENOMEM;
-
-	/* create platform component name */
-	platform->name = fmt_single_name(dev, &platform->id);
-	if (platform->name == NULL) {
-		kfree(platform);
-		return -ENOMEM;
-	}
-
-	platform->dev = dev;
-	platform->driver = platform_drv;
+	INIT_LIST_HEAD(&platform->list);
 
 	mutex_lock(&client_mutex);
 	list_add(&platform->list, &platform_list);
@@ -3138,6 +3116,7 @@ int snd_soc_register_platform(struct device *dev,
 	return 0;
 }
 EXPORT_SYMBOL_GPL(snd_soc_register_platform);
+
 
 /**
  * snd_soc_unregister_platform - Unregister a platform from the ASoC core

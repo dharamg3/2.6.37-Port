@@ -4,6 +4,8 @@
 #include <linux/interrupt.h>
 #include <linux/sched.h>
 #include <linux/workqueue.h>
+#include <linux/slab.h>
+#include <linux/slub_def.h>
 
 //#include <asm/hardware.h>
 //#include <asm/arch/gpio.h>

@@ -34,6 +34,8 @@
 #include <linux/workqueue.h>
 #include <linux/timer.h>
 #include <../../../kernel/power/power.h>
+#include <linux/slab.h>
+#include <linux/slub_def.h>
 
 #include <linux/modemctl.h>
 

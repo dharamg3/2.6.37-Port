@@ -12,7 +12,6 @@
 #include <linux/init.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
-#include <linux/slab.h>
 #include <linux/device.h>
 #include <linux/dma-mapping.h>
 #include <linux/list.h>
@@ -48,9 +47,10 @@ static int queue_dbg_open(struct inode *inode, struct file *file)
 
 	spin_lock_irq(&ep->udc->lock);
 	list_for_each_entry(req, &ep->queue, queue) {
-		req_copy = kmemdup(req, sizeof(*req_copy), GFP_ATOMIC);
+		req_copy = kmalloc(sizeof(*req_copy), GFP_ATOMIC);
 		if (!req_copy)
 			goto fail;
+		memcpy(req_copy, req, sizeof(*req_copy));
 		list_add_tail(&req_copy->queue, queue_data);
 	}
 	spin_unlock_irq(&ep->udc->lock);
@@ -320,19 +320,19 @@ static inline void usba_cleanup_debugfs(struct usba_udc *udc)
 static int vbus_is_present(struct usba_udc *udc)
 {
 	if (udc->vbus_pin != -1)
-		return gpio_get_value(udc->vbus_pin) ^ udc->vbus_pin_inverted;
+		return gpio_get_value(udc->vbus_pin);
 
 	/* No Vbus detection: Assume always present */
 	return 1;
 }
 
- #if defined(CONFIG_AVR32)
- 
- static void toggle_bias(int is_on)
- {
- }
- 
- #elif defined(CONFIG_ARCH_AT91)
+#if defined(CONFIG_AVR32)
+
+static void toggle_bias(int is_on)
+{
+}
+
+#elif defined(CONFIG_ARCH_AT91)
 
 #include <mach/at91_pmc.h>
 
@@ -346,7 +346,7 @@ static void toggle_bias(int is_on)
 		at91_sys_write(AT91_CKGR_UCKR, uckr & ~(AT91_PMC_BIASEN));
 }
 
- #endif /* CONFIG_ARCH_AT91 */
+#endif /* CONFIG_ARCH_AT91 */
 
 static void next_fifo_transaction(struct usba_ep *ep, struct usba_request *req)
 {
@@ -1762,7 +1762,7 @@ static irqreturn_t usba_vbus_irq(int irq, void *devid)
 	if (!udc->driver)
 		goto out;
 
-	vbus = vbus_is_present(udc);
+	vbus = gpio_get_value(udc->vbus_pin);
 	if (vbus != udc->vbus_prev) {
 		if (vbus) {
 			toggle_bias(1);
@@ -1788,8 +1788,7 @@ out:
 	return IRQ_HANDLED;
 }
 
-int usb_gadget_probe_driver(struct usb_gadget_driver *driver,
-		int (*bind)(struct usb_gadget *))
+int usb_gadget_register_driver(struct usb_gadget_driver *driver)
 {
 	struct usba_udc *udc = &the_udc;
 	unsigned long flags;
@@ -1812,7 +1811,7 @@ int usb_gadget_probe_driver(struct usb_gadget_driver *driver,
 	clk_enable(udc->pclk);
 	clk_enable(udc->hclk);
 
-	ret = bind(&udc->gadget);
+	ret = driver->bind(&udc->gadget);
 	if (ret) {
 		DBG(DBG_ERR, "Could not bind to driver %s: error %d\n",
 			driver->driver.name, ret);
@@ -1841,7 +1840,7 @@ err_driver_bind:
 	udc->gadget.dev.driver = NULL;
 	return ret;
 }
-EXPORT_SYMBOL(usb_gadget_probe_driver);
+EXPORT_SYMBOL(usb_gadget_register_driver);
 
 int usb_gadget_unregister_driver(struct usb_gadget_driver *driver)
 {
@@ -1914,14 +1913,14 @@ static int __init usba_udc_probe(struct platform_device *pdev)
 	udc->vbus_pin = -1;
 
 	ret = -ENOMEM;
-	udc->regs = ioremap(regs->start, resource_size(regs));
+	udc->regs = ioremap(regs->start, regs->end - regs->start + 1);
 	if (!udc->regs) {
 		dev_err(&pdev->dev, "Unable to map I/O memory, aborting.\n");
 		goto err_map_regs;
 	}
 	dev_info(&pdev->dev, "MMIO registers at 0x%08lx mapped at %p\n",
 		 (unsigned long)regs->start, udc->regs);
-	udc->fifo = ioremap(fifo->start, resource_size(fifo));
+	udc->fifo = ioremap(fifo->start, fifo->end - fifo->start + 1);
 	if (!udc->fifo) {
 		dev_err(&pdev->dev, "Unable to map FIFO, aborting.\n");
 		goto err_map_fifo;
@@ -2000,7 +1999,6 @@ static int __init usba_udc_probe(struct platform_device *pdev)
 	if (pdata->vbus_pin >= 0) {
 		if (!gpio_request(pdata->vbus_pin, "atmel_usba_udc")) {
 			udc->vbus_pin = pdata->vbus_pin;
-			udc->vbus_pin_inverted = pdata->vbus_pin_inverted;
 
 			ret = request_irq(gpio_to_irq(udc->vbus_pin),
 					usba_vbus_irq, 0,
@@ -2014,9 +2012,6 @@ static int __init usba_udc_probe(struct platform_device *pdev)
 			} else {
 				disable_irq(gpio_to_irq(udc->vbus_pin));
 			}
-		} else {
-			/* gpio_request fail so use -EINVAL for gpio_is_valid */
-			udc->vbus_pin = -EINVAL;
 		}
 	}
 

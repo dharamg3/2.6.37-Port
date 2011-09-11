@@ -215,7 +215,8 @@ struct usb_configuration {
 	 * we can't restructure things to avoid mismatching...
 	 */
 
-	/* configuration management: unbind/setup */
+	/* configuration management: bind/unbind/setup */
+	int			(*bind)(struct usb_configuration *);
 	void			(*unbind)(struct usb_configuration *);
 	int			(*setup)(struct usb_configuration *,
 					const struct usb_ctrlrequest *);
@@ -285,6 +286,7 @@ struct usb_composite_driver {
 	struct class		*class;
 	atomic_t		function_count;
 
+	int			(*bind)(struct usb_composite_dev *);
 	int			(*unbind)(struct usb_composite_dev *);
 
 	void			(*disconnect)(struct usb_composite_dev *);
@@ -298,6 +300,7 @@ struct usb_composite_driver {
 
 extern int usb_composite_probe(struct usb_composite_driver *driver,
 			       int (*bind)(struct usb_composite_dev *cdev));
+extern int usb_composite_register(struct usb_composite_driver *);
 extern void usb_composite_unregister(struct usb_composite_driver *driver);
 
 
