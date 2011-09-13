@@ -46,6 +46,14 @@
 #include "bf5xx-sport.h"
 #include "bf5xx-tdm.h"
 
+struct bf5xx_tdm_port {
+	u16 tcr1;
+	u16 rcr1;
+	u16 tcr2;
+	u16 rcr2;
+	int configured;
+};
+
 static struct bf5xx_tdm_port bf5xx_tdm;
 static int sport_num = CONFIG_SND_BF5XX_SPORT_NUM;
 
@@ -173,50 +181,17 @@ static void bf5xx_tdm_shutdown(struct snd_pcm_substream *substream,
 		bf5xx_tdm.configured = 0;
 }
 
-static int bf5xx_tdm_set_channel_map(struct snd_soc_dai *dai,
-		unsigned int tx_num, unsigned int *tx_slot,
-		unsigned int rx_num, unsigned int *rx_slot)
-{
-	int i;
-	unsigned int slot;
-	unsigned int tx_mapped = 0, rx_mapped = 0;
-
-	if ((tx_num > BFIN_TDM_DAI_MAX_SLOTS) ||
-			(rx_num > BFIN_TDM_DAI_MAX_SLOTS))
-		return -EINVAL;
-
-	for (i = 0; i < tx_num; i++) {
-		slot = tx_slot[i];
-		if ((slot < BFIN_TDM_DAI_MAX_SLOTS) &&
-				(!(tx_mapped & (1 << slot)))) {
-			bf5xx_tdm.tx_map[i] = slot;
-			tx_mapped |= 1 << slot;
-		} else
-			return -EINVAL;
-	}
-	for (i = 0; i < rx_num; i++) {
-		slot = rx_slot[i];
-		if ((slot < BFIN_TDM_DAI_MAX_SLOTS) &&
-				(!(rx_mapped & (1 << slot)))) {
-			bf5xx_tdm.rx_map[i] = slot;
-			rx_mapped |= 1 << slot;
-		} else
-			return -EINVAL;
-	}
-
-	return 0;
-}
-
 #ifdef CONFIG_PM
 static int bf5xx_tdm_suspend(struct snd_soc_dai *dai)
 {
-	struct sport_device *sport = snd_soc_dai_get_drvdata(dai);
+	struct sport_device *sport =
+		(struct sport_device *)dai->private_data;
 
 	if (!dai->active)
 		return 0;
-	if (dai->capture_active)
+	if (dai->capture.active)
 		sport_rx_stop(sport);
-	if (dai->playback_active)
+	if (dai->playback.active)
 		sport_tx_stop(sport);
 	return 0;
 }
@@ -224,7 +199,8 @@ static int bf5xx_tdm_suspend(struct snd_soc_dai *dai)
 static int bf5xx_tdm_resume(struct snd_soc_dai *dai)
 {
 	int ret;
-	struct sport_device *sport = snd_soc_dai_get_drvdata(dai);
+	struct sport_device *sport =
+		(struct sport_device *)dai->private_data;
 
 	if (!dai->active)
 		return 0;
@@ -259,10 +235,11 @@ static struct snd_soc_dai_ops bf5xx_tdm_dai_ops = {
 	.hw_params      = bf5xx_tdm_hw_params,
 	.set_fmt        = bf5xx_tdm_set_dai_fmt,
 	.shutdown       = bf5xx_tdm_shutdown,
-	.set_channel_map   = bf5xx_tdm_set_channel_map,
 };
 
-static struct snd_soc_dai_driver bf5xx_tdm_dai = {
+struct snd_soc_dai bf5xx_tdm_dai = {
+	.name = "bf5xx-tdm",
+	.id = 0,
 	.suspend = bf5xx_tdm_suspend,
 	.resume = bf5xx_tdm_resume,
 	.playback = {
@@ -277,6 +254,7 @@ static struct snd_soc_dai_driver bf5xx_tdm_dai = {
 		.formats = SNDRV_PCM_FMTBIT_S32_LE,},
 	.ops = &bf5xx_tdm_dai_ops,
 };
+EXPORT_SYMBOL_GPL(bf5xx_tdm_dai);
 
 static int __devinit bfin_tdm_probe(struct platform_device *pdev)
 {
@@ -317,13 +295,11 @@ static int __devinit bfin_tdm_probe(struct platform_device *pdev)
 		goto sport_config_err;
 	}
 
-	ret = snd_soc_register_dai(&pdev->dev, &bf5xx_tdm_dai);
+	ret = snd_soc_register_dai(&bf5xx_tdm_dai);
 	if (ret) {
 		pr_err("Failed to register DAI: %d\n", ret);
 		goto sport_config_err;
 	}
-
-	sport_handle->private_data = &bf5xx_tdm;
 	return 0;
 
 sport_config_err:
@@ -334,7 +310,7 @@ sport_config_err:
 static int __devexit bfin_tdm_remove(struct platform_device *pdev)
 {
 	peripheral_free_list(&sport_req[sport_num][0]);
-	snd_soc_unregister_dai(&pdev->dev);
+	snd_soc_unregister_dai(&bf5xx_tdm_dai);
 
 	return 0;
 }
