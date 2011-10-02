@@ -15,7 +15,6 @@
 
 #include <linux/kernel.h>
 #include <linux/module.h>
-//#include <linux/i2c/maximi2c.h>
 #include <linux/i2c/pmic.h>
 #include <linux/delay.h>
 #include <linux/interrupt.h>
@@ -25,6 +24,9 @@
 #include <mach/hardware.h>
 #include <plat/gpio-cfg.h>
 #include <linux/leds.h>
+#include <linux/i2c/max8998.h>
+#include <linux/slab.h>
+
 
 
 #ifdef PREFIX
@@ -1504,7 +1506,7 @@ void Set_MAX8998_PM_LBCNFG(max8998_pm_section_type cntl_item, lbcnfg_type lbcnfg
 
 
 /*===========================================================================*/
-boolean set_pmic(pmic_pm_type pm_type, int value)
+set_pmic(pmic_pm_type pm_type, int value)
 {
 	boolean rc = FALSE;
 	switch (pm_type) {
@@ -1522,7 +1524,7 @@ boolean set_pmic(pmic_pm_type pm_type, int value)
 	return rc;
 }
 
-boolean get_pmic(pmic_pm_type pm_type, int *value)
+get_pmic(pmic_pm_type pm_type, int *value)
 {
 	boolean rc = FALSE;
 	byte reg_buff;
